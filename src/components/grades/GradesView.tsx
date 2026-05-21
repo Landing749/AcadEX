@@ -1,0 +1,310 @@
+import React, { useMemo, useState } from 'react';
+import { Award, TrendingUp, BarChart2, Star, Scale } from 'lucide-react';
+import { useAssignments, useSubjects } from '../../hooks/useFirebase';
+import { percentageToLetterGrade, percentageToGPA, colorWithOpacity, cn } from '../../utils/helpers';
+import { ASSIGNMENT_TYPES } from '../../types';
+
+export function GradesView() {
+  const { assignments, loading } = useAssignments();
+  const { subjects } = useSubjects();
+  const [subjectFilter, setSubjectFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+
+  const graded = useMemo(() =>
+    assignments.filter(a =>
+      a.status === 'graded' &&
+      a.scoreEarned !== undefined &&
+      a.totalScore !== undefined &&
+      a.totalScore > 0 &&
+      (subjectFilter === 'all' || a.subjectId === subjectFilter) &&
+      (typeFilter === 'all' || a.type === typeFilter)
+    ).sort((a, b) => b.updatedAt - a.updatedAt),
+  [assignments, subjectFilter, typeFilter]);
+
+  const stats = useMemo(() => {
+    if (graded.length === 0) return null;
+    const totalEarned = graded.reduce((s, a) => s + a.scoreEarned!, 0);
+    const totalPossible = graded.reduce((s, a) => s + a.totalScore!, 0);
+    const avg = (totalEarned / totalPossible) * 100;
+    const highest = Math.max(...graded.map(a => (a.scoreEarned! / a.totalScore!) * 100));
+    const lowest = Math.min(...graded.map(a => (a.scoreEarned! / a.totalScore!) * 100));
+
+    const bySubject = subjects.map(sub => {
+      const subGraded = graded.filter(a => a.subjectId === sub.subjectId);
+      if (subGraded.length === 0) return null;
+      const earned = subGraded.reduce((s, a) => s + a.scoreEarned!, 0);
+      const possible = subGraded.reduce((s, a) => s + a.totalScore!, 0);
+      return {
+        subject: sub,
+        avg: (earned / possible) * 100,
+        count: subGraded.length,
+        weight: sub.weight ?? 3,
+      };
+    }).filter(Boolean).sort((a, b) => b!.avg - a!.avg);
+
+    // Weighted GWA: sum(avg * weight) / sum(weights)
+    const subjectsWithGrades = bySubject.filter(Boolean);
+    const totalWeightedScore = subjectsWithGrades.reduce((s, item) => s + item!.avg * item!.weight, 0);
+    const totalWeights = subjectsWithGrades.reduce((s, item) => s + item!.weight, 0);
+    const weightedGWA = totalWeights > 0 ? totalWeightedScore / totalWeights : avg;
+
+    const byType = ASSIGNMENT_TYPES.map(t => {
+      const typeGraded = graded.filter(a => a.type === t.value);
+      if (typeGraded.length === 0) return null;
+      const earned = typeGraded.reduce((s, a) => s + a.scoreEarned!, 0);
+      const possible = typeGraded.reduce((s, a) => s + a.totalScore!, 0);
+      return {
+        type: t,
+        avg: (earned / possible) * 100,
+        count: typeGraded.length,
+      };
+    }).filter(Boolean);
+
+    return { avg, highest, lowest, gpa: percentageToGPA(avg), bySubject, byType, weightedGWA, totalWeights };
+  }, [graded, subjects]);
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        {[...Array(4)].map((_, i) => <div key={i} className="skeleton h-24 rounded-2xl" />)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 sm:p-6 space-y-6 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Grades</h1>
+        <p className="text-sm text-gray-500">{graded.length} graded assignment{graded.length !== 1 ? 's' : ''}</p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2">
+        <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)} className="input flex-1 py-2 text-xs">
+          <option value="all">All Subjects</option>
+          {subjects.map(s => <option key={s.subjectId} value={s.subjectId}>{s.icon} {s.subjectName}</option>)}
+        </select>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input flex-1 py-2 text-xs">
+          <option value="all">All Types</option>
+          {ASSIGNMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
+        </select>
+      </div>
+
+      {/* No data state */}
+      {graded.length === 0 && (
+        <div className="text-center py-20">
+          <div className="w-20 h-20 bg-amber-100 dark:bg-amber-500/10 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <Award size={36} className="text-amber-600 dark:text-amber-400" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No grades yet</h3>
+          <p className="text-gray-500 text-sm">Mark assignments as "Graded" and add scores to see your grade analytics.</p>
+        </div>
+      )}
+
+      {stats && (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* GPA Card */}
+            <div className="card p-5 bg-gradient-to-br from-indigo-600 to-violet-600 border-0 col-span-2">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-indigo-100 text-xs mb-1">GPA</p>
+                  <p className="text-4xl font-bold text-white">{stats.gpa.toFixed(2)}</p>
+                  <p className="text-indigo-200 text-xs mt-1">{percentageToLetterGrade(stats.avg)}</p>
+                </div>
+                <div>
+                  <p className="text-indigo-100 text-xs mb-1">Average</p>
+                  <p className="text-3xl font-bold text-white">{stats.avg.toFixed(1)}%</p>
+                  <p className="text-indigo-200 text-xs mt-1">{graded.length} graded</p>
+                </div>
+                <div>
+                  <p className="text-indigo-100 text-xs mb-1">Range</p>
+                  <p className="text-lg font-bold text-white">{stats.highest.toFixed(0)}%</p>
+                  <p className="text-indigo-200 text-xs">↓ {stats.lowest.toFixed(0)}%</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Weighted GWA Card */}
+            {stats.bySubject.length > 1 && stats.totalWeights > 0 && (
+              <div className="card p-4 col-span-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <Scale size={16} className="text-indigo-500" />
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Weighted GWA</p>
+                  <span className="text-xs text-gray-400 ml-auto">{stats.totalWeights} total units</span>
+                </div>
+                <div className="flex items-end gap-3">
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.weightedGWA.toFixed(2)}%</p>
+                  <p className="text-base font-semibold mb-0.5" style={{
+                    color: stats.weightedGWA >= 90 ? '#10b981' : stats.weightedGWA >= 75 ? '#6366f1' : stats.weightedGWA >= 60 ? '#f59e0b' : '#f43f5e'
+                  }}>
+                    {percentageToLetterGrade(stats.weightedGWA)}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Calculated using subject unit weights. Set weights in Subjects → Edit.</p>
+                {/* Mini weight bars */}
+                <div className="flex gap-1 mt-3 flex-wrap">
+                  {stats.bySubject.map(item => item && (
+                    <div key={item.subject.subjectId} title={`${item.subject.subjectName}: ${item.avg.toFixed(1)}% × ${item.weight}u`}
+                      className="flex-1 min-w-0" style={{ minWidth: `${(item.weight / stats.totalWeights) * 100}%`, maxWidth: `${(item.weight / stats.totalWeights) * 100}%` }}>
+                      <div className="h-2 rounded-full" style={{ backgroundColor: item.subject.color }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 flex-wrap mt-1.5">
+                  {stats.bySubject.map(item => item && (
+                    <span key={item.subject.subjectId} className="text-xs flex items-center gap-1" style={{ color: item.subject.color }}>
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: item.subject.color }} />
+                      {item.subject.icon} {item.weight}u
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* By Subject */}
+          {stats.bySubject.length > 0 && (
+            <div className="card p-5">
+              <h2 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <BarChart2 size={18} className="text-indigo-500" />
+                Performance by Subject
+              </h2>
+              <div className="space-y-4">
+                {stats.bySubject.map((item) => {
+                  if (!item) return null;
+                  const letter = percentageToLetterGrade(item.avg);
+                  const barColor = item.avg >= 90 ? '#10b981' : item.avg >= 75 ? '#6366f1' : item.avg >= 60 ? '#f59e0b' : '#f43f5e';
+                  return (
+                    <div key={item.subject.subjectId}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{item.subject.icon}</span>
+                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{item.subject.subjectName}</span>
+                          <span className="text-xs text-gray-400">({item.count})</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/10 text-gray-500 font-medium">
+                            {item.weight}u
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            'text-xs font-bold px-2 py-0.5 rounded-full',
+                            item.avg >= 90 ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-400' :
+                            item.avg >= 75 ? 'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400' :
+                            item.avg >= 60 ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400' :
+                            'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400'
+                          )}>
+                            {letter}
+                          </span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white w-14 text-right">{item.avg.toFixed(1)}%</span>
+                        </div>
+                      </div>
+                      <div className="relative h-2.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className="absolute left-0 top-0 h-full rounded-full transition-all duration-700"
+                          style={{ width: `${Math.min(item.avg, 100)}%`, backgroundColor: barColor }}
+                        />
+                        {/* Target line */}
+                        <div
+                          className="absolute top-0 h-full w-0.5 bg-gray-400 dark:bg-white/40"
+                          style={{ left: `${item.subject.targetGrade}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                        <span>Target: {item.subject.targetGrade}%</span>
+                        <span className={item.avg >= item.subject.targetGrade ? 'text-green-500' : 'text-red-400'}>
+                          {item.avg >= item.subject.targetGrade ? '✓ On track' : `${(item.subject.targetGrade - item.avg).toFixed(1)}% to go`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* By Assignment Type */}
+          {stats.byType.length > 0 && (
+            <div className="card p-5">
+              <h2 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <TrendingUp size={18} className="text-violet-500" />
+                Performance by Type
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {stats.byType.map(item => {
+                  if (!item) return null;
+                  return (
+                    <div
+                      key={item.type.value}
+                      className={cn(
+                        'p-3 rounded-xl text-center',
+                        item.avg >= 90 ? 'bg-green-50 dark:bg-green-500/10' :
+                        item.avg >= 75 ? 'bg-indigo-50 dark:bg-indigo-500/10' :
+                        item.avg >= 60 ? 'bg-amber-50 dark:bg-amber-500/10' :
+                        'bg-red-50 dark:bg-red-500/10'
+                      )}
+                    >
+                      <p className="text-2xl mb-1">{item.type.icon}</p>
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{item.type.label}</p>
+                      <p className={cn(
+                        'text-lg font-bold mt-1',
+                        item.avg >= 90 ? 'text-green-600 dark:text-green-400' :
+                        item.avg >= 75 ? 'text-indigo-600 dark:text-indigo-400' :
+                        item.avg >= 60 ? 'text-amber-600 dark:text-amber-400' :
+                        'text-red-600 dark:text-red-400'
+                      )}>
+                        {item.avg.toFixed(0)}%
+                      </p>
+                      <p className="text-xs text-gray-400">{item.count} graded</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Grade List */}
+      {graded.length > 0 && (
+        <div className="card p-5">
+          <h2 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Star size={18} className="text-amber-500" />
+            All Grades
+          </h2>
+          <div className="space-y-2">
+            {graded.map(a => {
+              const sub = subjects.find(s => s.subjectId === a.subjectId);
+              const pct = (a.scoreEarned! / a.totalScore!) * 100;
+              const letter = percentageToLetterGrade(pct);
+              const typeInfo = ASSIGNMENT_TYPES.find(t => t.value === a.type);
+              return (
+                <div key={a.assignmentId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                  <div className="w-2 h-10 rounded-full shrink-0" style={{ backgroundColor: sub?.color || '#6366f1' }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{a.title}</p>
+                    <p className="text-xs text-gray-500">{sub?.icon} {sub?.subjectName} · {typeInfo?.icon} {typeInfo?.label}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={cn(
+                      'text-sm font-bold',
+                      pct >= 90 ? 'text-green-600 dark:text-green-400' :
+                      pct >= 75 ? 'text-indigo-600 dark:text-indigo-400' :
+                      pct >= 60 ? 'text-amber-600 dark:text-amber-400' :
+                      'text-red-600 dark:text-red-400'
+                    )}>
+                      {letter} · {pct.toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-gray-400">{a.scoreEarned}/{a.totalScore}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
