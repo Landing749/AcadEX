@@ -104,7 +104,7 @@ export function useAssignments() {
     if (!navigator.onLine) { setLoading(false); return; }
 
     const assignmentsRef = ref(db, `assignments/${currentUser.uid}`);
-    const unsubscribe = onValue(assignmentsRef, (snapshot) => {
+    const unsubscribe = onValue(assignmentsRef, async (snapshot) => {
       const data = snapshot.val();
       const list: Assignment[] = data ? Object.values(data) as Assignment[] : [];
       const now = Date.now();
@@ -115,8 +115,24 @@ export function useAssignments() {
         }
         return a;
       });
-      setAssignments(processed);
-      cacheAssignments(processed);
+
+      // Merge Firebase data with any locally-cached assignments that didn't sync yet.
+      // This prevents assignments from disappearing on refresh when the Firebase write
+      // was delayed or failed (e.g. brief network drop, security rule timing).
+      const cached = await getCachedAssignments(currentUser.uid);
+      const fbIds = new Set(processed.map(a => a.assignmentId));
+      const localPending = cached.filter(a => !fbIds.has(a.assignmentId));
+
+      // Re-queue any unsynced local assignments to Firebase so they eventually land.
+      if (localPending.length > 0) {
+        localPending.forEach(a => {
+          set(ref(db, `assignments/${currentUser.uid}/${a.assignmentId}`), a).catch(console.error);
+        });
+      }
+
+      const merged = [...processed, ...localPending];
+      setAssignments(merged);
+      cacheAssignments(merged);
       setLoading(false);
     }, (err) => {
       console.error('Firebase assignments error:', err);
