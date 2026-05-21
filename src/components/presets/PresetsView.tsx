@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { usePresets } from '../../hooks/useFirebase';
 import { useSubjects } from '../../hooks/useFirebase';
-import { GradePreset, SubjectPresetEntry, SUBJECT_COLORS, SUBJECT_ICONS, PRESET_TEMPLATES, SCHOOL_TYPES } from '../../types';
+import { GradePreset, SubjectPresetEntry, SUBJECT_COLORS, SUBJECT_ICONS, PRESET_TEMPLATES, SCHOOL_TYPES, DEFAULT_GRADE_WEIGHTS } from '../../types';
 import { Modal } from '../ui/Modal';
 import { cn, generateId } from '../../utils/helpers';
 import toast from 'react-hot-toast';
@@ -316,6 +316,7 @@ export function PresetsView() {
         color: s.color,
         weight: s.weight,
         targetGrade: s.targetGrade,
+        gradeWeights: s.gradeWeights ?? DEFAULT_GRADE_WEIGHTS,
         semester: '',
         teacherName: '',
       });
@@ -333,6 +334,7 @@ export function PresetsView() {
         color: s.color,
         weight: s.weight,
         targetGrade: s.targetGrade,
+        gradeWeights: s.gradeWeights ?? DEFAULT_GRADE_WEIGHTS,
         semester: '',
         teacherName: '',
       });
