@@ -14,6 +14,7 @@ export interface Subject {
   teacherName: string;
   targetGrade: number;
   weight: number; // credit units / subject weight (default 3)
+  typeWeights?: Partial<Record<AssignmentType, number>>;
   createdAt: number;
   userId: string;
 }
