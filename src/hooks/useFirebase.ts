@@ -10,6 +10,11 @@ import {
 import { Subject, Assignment, GradePreset, HelpPost, HelpReply, UserProfile } from '../types';
 import { generateId } from '../utils/helpers';
 
+/** Remove undefined values recursively — Firebase RTDB rejects them */
+function stripUndefined<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
 // ---- SUBJECTS ----
 
 export function useSubjects() {
@@ -126,7 +131,7 @@ export function useAssignments() {
       // Re-queue any unsynced local assignments to Firebase so they eventually land.
       if (localPending.length > 0) {
         localPending.forEach(a => {
-          set(ref(db, `assignments/${currentUser.uid}/${a.assignmentId}`), a).catch(console.error);
+          set(ref(db, `assignments/${currentUser.uid}/${a.assignmentId}`), stripUndefined(a)).catch(console.error);
         });
       }
 
@@ -154,9 +159,9 @@ export function useAssignments() {
     await cacheAssignment(assignment);
     setAssignments(prev => [...prev, assignment]);
     if (navigator.onLine) {
-      await set(ref(db, `assignments/${currentUser.uid}/${assignment.assignmentId}`), assignment);
+      await set(ref(db, `assignments/${currentUser.uid}/${assignment.assignmentId}`), stripUndefined(assignment));
     } else {
-      await queueOfflineAction({ id: generateId(), type: 'create', collection: 'assignments', data: assignment, timestamp: Date.now() });
+      await queueOfflineAction({ id: generateId(), type: 'create', collection: 'assignments', data: stripUndefined(assignment), timestamp: Date.now() });
     }
     return assignment;
   }, [currentUser]);
@@ -169,9 +174,9 @@ export function useAssignments() {
     await cacheAssignment(updated);
     setAssignments(prev => prev.map(a => a.assignmentId === assignmentId ? updated : a));
     if (navigator.onLine) {
-      await set(ref(db, `assignments/${currentUser.uid}/${assignmentId}`), updated);
+      await set(ref(db, `assignments/${currentUser.uid}/${assignmentId}`), stripUndefined(updated));
     } else {
-      await queueOfflineAction({ id: generateId(), type: 'update', collection: 'assignments', data: updated, timestamp: Date.now() });
+      await queueOfflineAction({ id: generateId(), type: 'update', collection: 'assignments', data: stripUndefined(updated), timestamp: Date.now() });
     }
   }, [currentUser, assignments]);
 
