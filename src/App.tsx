@@ -13,13 +13,21 @@ import { CalendarView } from './components/calendar/CalendarView';
 import { AnalyticsView } from './components/analytics/AnalyticsView';
 import { PresetsView } from './components/presets/PresetsView';
 import { CommunityView } from './components/community/CommunityView';
-import { ProfileView } from './components/profile/ProfileView';
+import { ProfileView, PublicProfilePage } from './components/profile/ProfileView';
 
 type Page = 'dashboard' | 'subjects' | 'assignments' | 'grades' | 'calendar' | 'analytics' | 'presets' | 'community' | 'profile';
+
+// Read ?profile= from URL once at module load — stable, no re-render needed
+const SHARED_PROFILE_ID = new URLSearchParams(window.location.search).get('profile');
 
 function AppContent() {
   const { currentUser, loading } = useAuth();
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+
+  // Show public profile page for anyone who visits a share link, logged in or not
+  if (SHARED_PROFILE_ID) {
+    return <PublicProfilePage shareId={SHARED_PROFILE_ID} />;
+  }
 
   if (loading) {
     return (
@@ -38,16 +46,16 @@ function AppContent() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'dashboard': return <Dashboard onNavigate={p => setCurrentPage(p as Page)} />;
-      case 'subjects': return <SubjectsView />;
-      case 'assignments': return <AssignmentsView />;
-      case 'grades': return <GradesView />;
-      case 'calendar': return <CalendarView />;
-      case 'analytics': return <AnalyticsView />;
-      case 'presets': return <PresetsView />;
-      case 'community': return <CommunityView />;
-      case 'profile': return <ProfileView />;
-      default: return <Dashboard onNavigate={p => setCurrentPage(p as Page)} />;
+      case 'dashboard':    return <Dashboard onNavigate={p => setCurrentPage(p as Page)} />;
+      case 'subjects':     return <SubjectsView />;
+      case 'assignments':  return <AssignmentsView />;
+      case 'grades':       return <GradesView />;
+      case 'calendar':     return <CalendarView />;
+      case 'analytics':    return <AnalyticsView />;
+      case 'presets':      return <PresetsView />;
+      case 'community':    return <CommunityView />;
+      case 'profile':      return <ProfileView />;
+      default:             return <Dashboard onNavigate={p => setCurrentPage(p as Page)} />;
     }
   };
 
@@ -77,7 +85,7 @@ function App() {
               boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
             },
             success: { iconTheme: { primary: '#6366f1', secondary: '#fff' } },
-            error: { iconTheme: { primary: '#f43f5e', secondary: '#fff' } },
+            error:   { iconTheme: { primary: '#f43f5e', secondary: '#fff' } },
           }}
         />
       </AuthProvider>

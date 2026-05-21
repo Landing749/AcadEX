@@ -582,3 +582,116 @@ function ProfilePreviewCard({
     </div>
   );
 }
+
+// ---- Public profile page (rendered when visiting a ?profile= share link) ----
+
+import { usePublicProfile } from '../../hooks/useFirebase';
+
+export function PublicProfilePage({ shareId }: { shareId: string }) {
+  const { profile, loading, notFound } = usePublicProfile(shareId);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg animate-pulse">
+            <span className="text-xl font-bold text-white">A</span>
+          </div>
+          <p className="text-sm text-gray-400">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound || !profile) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
+        <div className="text-center max-w-sm">
+          <div className="text-5xl mb-4">🔒</div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Profile not found</h2>
+          <p className="text-sm text-gray-500 mb-6">This profile is private or the link is invalid.</p>
+          <a href="/" className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors">
+            Go to Acadex
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const {
+    displayName, bio, school, course, yearLevel,
+    avatarUrl = '', bannerUrl = '',
+    bannerGradient = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    avatarBg = '#6366f1',
+  } = profile;
+
+  const initials = displayName
+    ? displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+    : '?';
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center py-10 px-4">
+      {/* Acadex branding */}
+      <div className="flex items-center gap-2 mb-6">
+        <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center">
+          <span className="text-xs font-bold text-white">A</span>
+        </div>
+        <span className="text-sm font-bold text-gray-500 dark:text-gray-400">Acadex</span>
+      </div>
+
+      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-xl">
+        {/* Banner */}
+        <div
+          className="h-36 w-full"
+          style={{
+            background: bannerUrl ? undefined : bannerGradient,
+            backgroundImage: bannerUrl ? `url(${bannerUrl})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+
+        {/* Content */}
+        <div className="px-6 pb-6">
+          {/* Avatar */}
+          <div className="flex items-end gap-4 -mt-10 mb-4">
+            <div
+              className="w-20 h-20 rounded-2xl border-4 border-white dark:border-gray-800 overflow-hidden flex items-center justify-center text-white text-2xl font-bold shadow-lg shrink-0"
+              style={{ background: avatarUrl ? undefined : avatarBg }}
+            >
+              {avatarUrl
+                ? <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                : initials
+              }
+            </div>
+          </div>
+
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{displayName}</h1>
+          {bio && <p className="text-sm text-gray-500 mt-1 leading-relaxed">{bio}</p>}
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            {school && (
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+                <GraduationCap size={11} /> {school.length > 35 ? school.slice(0, 33) + '…' : school}
+              </span>
+            )}
+            {course && (
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium">
+                <BookOpen size={11} /> {course}
+              </span>
+            )}
+            {yearLevel && (
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">
+                <User size={11} /> {yearLevel}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-6 text-xs text-gray-400">
+        Made with <a href="/" className="text-indigo-500 font-medium hover:underline">Acadex</a>
+      </p>
+    </div>
+  );
+}
