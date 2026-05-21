@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal } from '../ui/Modal';
-import { SUBJECT_COLORS, SUBJECT_ICONS, ASSIGNMENT_TYPES, Subject, AssignmentType } from '../../types';
+import { SUBJECT_COLORS, SUBJECT_ICONS, Subject, GradeWeights, GRADE_CATEGORIES, DEFAULT_GRADE_WEIGHTS, DEPED_SHS_CORE_WEIGHTS, DEPED_JHS_WEIGHTS, DEPED_COLLEGE_WEIGHTS } from '../../types';
 import { cn } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
@@ -11,13 +11,11 @@ interface SubjectFormProps {
   editingSubject?: Subject | null;
 }
 
-const DEFAULT_TYPE_WEIGHTS: Partial<Record<AssignmentType, number>> = {
-  exam: 40,
-  quiz: 20,
-  homework: 15,
-  project: 15,
-  activity: 10,
-};
+const WEIGHT_PRESETS = [
+  { label: 'SHS Core', hint: 'WW 25 / PT 50 / QA 25', weights: DEPED_SHS_CORE_WEIGHTS },
+  { label: 'JHS', hint: 'WW 30 / PT 50 / QA 20', weights: DEPED_JHS_WEIGHTS },
+  { label: 'College', hint: 'WW 30 / PT 40 / QA 30', weights: DEPED_COLLEGE_WEIGHTS },
+];
 
 export function SubjectForm({ isOpen, onClose, onSubmit, editingSubject }: SubjectFormProps) {
   const [subjectName, setSubjectName] = useState(editingSubject?.subjectName || '');
@@ -27,10 +25,9 @@ export function SubjectForm({ isOpen, onClose, onSubmit, editingSubject }: Subje
   const [teacherName, setTeacherName] = useState(editingSubject?.teacherName || '');
   const [targetGrade, setTargetGrade] = useState(editingSubject?.targetGrade || 85);
   const [weight, setWeight] = useState(editingSubject?.weight ?? 3);
-  const [typeWeights, setTypeWeights] = useState<Partial<Record<AssignmentType, number>>>(
-    editingSubject?.typeWeights || DEFAULT_TYPE_WEIGHTS
+  const [gradeWeights, setGradeWeights] = useState<GradeWeights>(
+    editingSubject?.gradeWeights || DEFAULT_GRADE_WEIGHTS
   );
-  const [useTypeWeights, setUseTypeWeights] = useState(!!(editingSubject?.typeWeights));
   const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
@@ -42,33 +39,33 @@ export function SubjectForm({ isOpen, onClose, onSubmit, editingSubject }: Subje
       setTeacherName(editingSubject.teacherName);
       setTargetGrade(editingSubject.targetGrade);
       setWeight(editingSubject.weight ?? 3);
-      setTypeWeights(editingSubject.typeWeights || DEFAULT_TYPE_WEIGHTS);
-      setUseTypeWeights(!!(editingSubject.typeWeights));
+      setGradeWeights(editingSubject.gradeWeights || DEFAULT_GRADE_WEIGHTS);
     } else {
       setSubjectName(''); setColor(SUBJECT_COLORS[0]); setIcon(SUBJECT_ICONS[0]);
       setSemester(''); setTeacherName(''); setTargetGrade(85); setWeight(3);
-      setTypeWeights(DEFAULT_TYPE_WEIGHTS); setUseTypeWeights(false);
+      setGradeWeights(DEFAULT_GRADE_WEIGHTS);
     }
   }, [editingSubject, isOpen]);
 
-  const totalTypeWeight = Object.values(typeWeights).reduce((s, v) => s + (v || 0), 0);
+  const totalWeight =
+    gradeWeights.written_work + gradeWeights.performance_task + gradeWeights.quarterly_assessment;
 
-  const handleTypeWeightChange = (type: AssignmentType, value: number) => {
-    setTypeWeights(prev => ({ ...prev, [type]: Math.max(0, Math.min(100, value)) }));
+  const handleWeightChange = (key: keyof GradeWeights, value: number) => {
+    setGradeWeights(prev => ({ ...prev, [key]: Math.max(0, Math.min(100, value)) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subjectName.trim()) return;
-    if (useTypeWeights && totalTypeWeight !== 100) {
-      toast.error(`Weights must total 100% (currently ${totalTypeWeight}%)`);
+    if (totalWeight !== 100) {
+      toast.error(`Grade weights must total 100% (currently ${totalWeight}%)`);
       return;
     }
     setLoading(true);
     try {
       await onSubmit({
-        subjectName: subjectName.trim(), color, icon, semester, teacherName, targetGrade, weight,
-        typeWeights: useTypeWeights ? typeWeights : undefined,
+        subjectName: subjectName.trim(), color, icon, semester, teacherName,
+        targetGrade, weight, gradeWeights,
       });
       toast.success(editingSubject ? 'Subject updated!' : 'Subject created!');
       onClose();
@@ -146,68 +143,76 @@ export function SubjectForm({ isOpen, onClose, onSubmit, editingSubject }: Subje
           <p className="text-xs text-gray-400 mt-1">Used to compute weighted GWA. Most PH college subjects = 3 units.</p>
         </div>
 
-        {/* Assignment Type Weights */}
+        {/* Grade Component Weights — DepEd 3-component system */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="label mb-0">Grade Composition</label>
-            <button
-              type="button"
-              onClick={() => setUseTypeWeights(v => !v)}
-              className={cn(
-                'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full transition-all',
-                useTypeWeights
-                  ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400'
-                  : 'bg-gray-100 dark:bg-white/10 text-gray-500'
-              )}
-            >
-              {useTypeWeights ? 'Custom ✓' : 'Set Weights'}
-            </button>
+            <label className="label mb-0">Grade Components</label>
+            <span className={cn(
+              'text-xs font-semibold px-2.5 py-1 rounded-full',
+              totalWeight === 100
+                ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-400'
+                : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400'
+            )}>
+              {totalWeight}% {totalWeight === 100 ? '✓' : `(${100 - totalWeight > 0 ? '+' : ''}${100 - totalWeight}% needed)`}
+            </span>
           </div>
 
-          {useTypeWeights && (
-            <div className="space-y-2 p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
-              <p className="text-xs text-gray-500 mb-3">
-                Set how much each type contributes to the final grade. Must total 100%.
-              </p>
-              {ASSIGNMENT_TYPES.map(t => (
-                <div key={t.value} className="flex items-center gap-3">
-                  <span className="text-base w-6">{t.icon}</span>
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-24">{t.label}</span>
-                  <input
-                    type="range"
-                    min={0} max={100} step={5}
-                    value={typeWeights[t.value] ?? 0}
-                    onChange={e => handleTypeWeightChange(t.value, Number(e.target.value))}
-                    className="flex-1 accent-indigo-600"
-                  />
-                  <div className="flex items-center gap-1 w-16">
-                    <input
-                      type="number"
-                      min={0} max={100}
-                      value={typeWeights[t.value] ?? 0}
-                      onChange={e => handleTypeWeightChange(t.value, Number(e.target.value))}
-                      className="input py-1 px-2 text-center text-xs w-12"
+          {/* Quick-fill presets */}
+          <div className="flex gap-2 flex-wrap">
+            {WEIGHT_PRESETS.map(p => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => setGradeWeights(p.weights)}
+                className="text-xs px-3 py-1.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 hover:text-indigo-700 dark:hover:text-indigo-400 transition-all font-medium"
+                title={p.hint}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-3 p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
+            <p className="text-xs text-gray-500 mb-1">
+              Set the percentage weight for each grade component as specified by your school. Must total 100%.
+            </p>
+
+            {GRADE_CATEGORIES.map(cat => {
+              const val = gradeWeights[cat.value];
+              return (
+                <div key={cat.value}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-base">{cat.icon}</span>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{cat.label}</p>
+                      <p className="text-xs text-gray-400">{cat.description}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <input
+                        type="number"
+                        min={0} max={100}
+                        value={val}
+                        onChange={e => handleWeightChange(cat.value, Number(e.target.value))}
+                        className="input py-1 px-2 text-center text-sm w-14 font-bold"
+                      />
+                      <span className="text-xs text-gray-400">%</span>
+                    </div>
+                  </div>
+                  {/* Weight bar */}
+                  <div className="h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.min(val, 100)}%`,
+                        backgroundColor: color,
+                        opacity: 0.7 + (val / 100) * 0.3,
+                      }}
                     />
-                    <span className="text-xs text-gray-400">%</span>
                   </div>
                 </div>
-              ))}
-              <div className={cn(
-                'flex items-center justify-between mt-3 pt-3 border-t',
-                totalTypeWeight === 100
-                  ? 'border-green-200 dark:border-green-500/20'
-                  : 'border-red-200 dark:border-red-500/20'
-              )}>
-                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Total</span>
-                <span className={cn(
-                  'text-sm font-bold',
-                  totalTypeWeight === 100 ? 'text-green-600 dark:text-green-400' : 'text-red-500'
-                )}>
-                  {totalTypeWeight}% {totalTypeWeight === 100 ? '✓' : `(need ${100 - totalTypeWeight > 0 ? '+' : ''}${100 - totalTypeWeight}%)`}
-                </span>
-              </div>
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
 
         <div>

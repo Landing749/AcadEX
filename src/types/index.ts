@@ -5,6 +5,32 @@ export interface User {
   photoURL: string | null;
 }
 
+// ---- GRADE CATEGORY (DepEd 3-component system) ----
+export type GradeCategory = 'written_work' | 'performance_task' | 'quarterly_assessment';
+
+export interface GradeWeights {
+  written_work: number;       // e.g. 25 (percent)
+  performance_task: number;   // e.g. 50
+  quarterly_assessment: number; // e.g. 25
+}
+
+export const DEFAULT_GRADE_WEIGHTS: GradeWeights = {
+  written_work: 30,
+  performance_task: 50,
+  quarterly_assessment: 20,
+};
+
+// DepEd preset defaults
+export const DEPED_SHS_CORE_WEIGHTS: GradeWeights = { written_work: 25, performance_task: 50, quarterly_assessment: 25 };
+export const DEPED_JHS_WEIGHTS: GradeWeights = { written_work: 30, performance_task: 50, quarterly_assessment: 20 };
+export const DEPED_COLLEGE_WEIGHTS: GradeWeights = { written_work: 30, performance_task: 40, quarterly_assessment: 30 };
+
+export const GRADE_CATEGORIES: { value: GradeCategory; label: string; icon: string; description: string }[] = [
+  { value: 'written_work', label: 'Written Works', icon: '✍️', description: 'Quizzes, homework, long tests, seatwork' },
+  { value: 'performance_task', label: 'Performance Tasks', icon: '🎯', description: 'Projects, lab work, presentations, outputs' },
+  { value: 'quarterly_assessment', label: 'Quarterly Assessment', icon: '📋', description: 'Exams, unit tests, quarterly assessments' },
+];
+
 export interface Subject {
   subjectId: string;
   subjectName: string;
@@ -14,6 +40,8 @@ export interface Subject {
   teacherName: string;
   targetGrade: number;
   weight: number; // credit units / subject weight (default 3)
+  gradeWeights: GradeWeights; // 3-component grade weights (must sum to 100)
+  /** @deprecated use gradeWeights instead */
   typeWeights?: Partial<Record<AssignmentType, number>>;
   createdAt: number;
   userId: string;
@@ -30,6 +58,7 @@ export interface Assignment {
   subjectName?: string;
   subjectColor?: string;
   type: AssignmentType;
+  gradeCategory: GradeCategory; // which of the 3 components this belongs to
   dueDate: string;
   dueTime: string;
   status: AssignmentStatus;
@@ -102,6 +131,7 @@ export interface SubjectPresetEntry {
   color: string;
   weight: number;
   targetGrade: number;
+  gradeWeights?: GradeWeights;
 }
 
 export interface GradePreset {
@@ -171,6 +201,17 @@ export const SUBJECT_ICONS = [
   '📚', '🔬', '🧮', '🌍', '🎨', '💻', '📝', '🔭', '🎭', '🏛️',
   '⚗️', '📐', '🎵', '💡', '🌱', '🏆', '📊', '🔐', '🧠', '✏️',
 ];
+
+// Suggested grade category based on assignment type
+export const TYPE_TO_GRADE_CATEGORY: Record<AssignmentType, GradeCategory> = {
+  quiz: 'written_work',
+  homework: 'written_work',
+  activity: 'written_work',
+  project: 'performance_task',
+  lab: 'performance_task',
+  presentation: 'performance_task',
+  exam: 'quarterly_assessment',
+};
 
 export const ASSIGNMENT_TYPES: { value: AssignmentType; label: string; icon: string }[] = [
   { value: 'quiz', label: 'Quiz', icon: '❓' },
@@ -329,7 +370,7 @@ export const PHILIPPINE_SCHOOLS: string[] = [
 
   // ── Region IV-A - CALABARZON ─────────────────────────────────────────
   'University of the Philippines Los Banos (UPLB)',
-  'De La Salle University - Dasmari?nas (DLSU-D)',
+  'De La Salle University - Dasmarinas (DLSU-D)',
   'De La Salle Lipa',
   'Batangas State University (BatStateU)',
   'University of Batangas (UB)',
@@ -506,12 +547,12 @@ export const PRESET_TEMPLATES: Omit<GradePreset, 'presetId' | 'userId' | 'create
     description: 'Typical 1st year CS curriculum in PH universities',
     schoolType: 'college',
     subjects: [
-      { subjectName: 'Programming 1', icon: '💻', color: '#6366f1', weight: 3, targetGrade: 85 },
-      { subjectName: 'Discrete Mathematics', icon: '🧮', color: '#8b5cf6', weight: 3, targetGrade: 80 },
-      { subjectName: 'Computer Organization', icon: '🔐', color: '#3b82f6', weight: 3, targetGrade: 80 },
-      { subjectName: 'Komunikasyon sa Filipino', icon: '📝', color: '#10b981', weight: 3, targetGrade: 85 },
-      { subjectName: 'Purposive Communication', icon: '🎭', color: '#f59e0b', weight: 3, targetGrade: 85 },
-      { subjectName: 'NSTP', icon: '🏆', color: '#06b6d4', weight: 3, targetGrade: 90 },
+      { subjectName: 'Programming 1', icon: '💻', color: '#6366f1', weight: 3, targetGrade: 85, gradeWeights: DEPED_COLLEGE_WEIGHTS },
+      { subjectName: 'Discrete Mathematics', icon: '🧮', color: '#8b5cf6', weight: 3, targetGrade: 80, gradeWeights: DEPED_COLLEGE_WEIGHTS },
+      { subjectName: 'Computer Organization', icon: '🔐', color: '#3b82f6', weight: 3, targetGrade: 80, gradeWeights: DEPED_COLLEGE_WEIGHTS },
+      { subjectName: 'Komunikasyon sa Filipino', icon: '📝', color: '#10b981', weight: 3, targetGrade: 85, gradeWeights: DEPED_COLLEGE_WEIGHTS },
+      { subjectName: 'Purposive Communication', icon: '🎭', color: '#f59e0b', weight: 3, targetGrade: 85, gradeWeights: DEPED_COLLEGE_WEIGHTS },
+      { subjectName: 'NSTP', icon: '🏆', color: '#06b6d4', weight: 3, targetGrade: 90, gradeWeights: DEPED_COLLEGE_WEIGHTS },
     ],
   },
   {
@@ -519,12 +560,12 @@ export const PRESET_TEMPLATES: Omit<GradePreset, 'presetId' | 'userId' | 'create
     description: 'Standard STEM strand subjects',
     schoolType: 'shs',
     subjects: [
-      { subjectName: 'Pre-Calculus', icon: '🧮', color: '#6366f1', weight: 4, targetGrade: 85 },
-      { subjectName: 'Earth Science', icon: '🌍', color: '#10b981', weight: 4, targetGrade: 85 },
-      { subjectName: 'General Biology 1', icon: '🔬', color: '#ec4899', weight: 4, targetGrade: 85 },
-      { subjectName: 'General Physics 1', icon: '🔭', color: '#3b82f6', weight: 4, targetGrade: 80 },
-      { subjectName: 'General Chemistry 1', icon: '⚗️', color: '#f59e0b', weight: 4, targetGrade: 80 },
-      { subjectName: 'Oral Communication', icon: '🎤', color: '#8b5cf6', weight: 2, targetGrade: 90 },
+      { subjectName: 'Pre-Calculus', icon: '🧮', color: '#6366f1', weight: 4, targetGrade: 85, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'Earth Science', icon: '🌍', color: '#10b981', weight: 4, targetGrade: 85, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'General Biology 1', icon: '🔬', color: '#ec4899', weight: 4, targetGrade: 85, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'General Physics 1', icon: '🔭', color: '#3b82f6', weight: 4, targetGrade: 80, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'General Chemistry 1', icon: '⚗️', color: '#f59e0b', weight: 4, targetGrade: 80, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'Oral Communication', icon: '🎤', color: '#8b5cf6', weight: 2, targetGrade: 90, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
     ],
   },
   {
@@ -532,12 +573,12 @@ export const PRESET_TEMPLATES: Omit<GradePreset, 'presetId' | 'userId' | 'create
     description: 'Accountancy, Business & Management strand',
     schoolType: 'shs',
     subjects: [
-      { subjectName: 'Business Math', icon: '🧮', color: '#6366f1', weight: 4, targetGrade: 85 },
-      { subjectName: 'Organization & Management', icon: '🏛️', color: '#8b5cf6', weight: 4, targetGrade: 85 },
-      { subjectName: 'Business Ethics', icon: '📚', color: '#10b981', weight: 4, targetGrade: 90 },
-      { subjectName: 'Fundamentals of ABM', icon: '📊', color: '#f59e0b', weight: 4, targetGrade: 85 },
-      { subjectName: 'Oral Communication', icon: '🎤', color: '#ec4899', weight: 2, targetGrade: 90 },
-      { subjectName: 'Humanities & Social Sciences', icon: '🌍', color: '#06b6d4', weight: 4, targetGrade: 88 },
+      { subjectName: 'Business Math', icon: '🧮', color: '#6366f1', weight: 4, targetGrade: 85, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'Organization & Management', icon: '🏛️', color: '#8b5cf6', weight: 4, targetGrade: 85, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'Business Ethics', icon: '📚', color: '#10b981', weight: 4, targetGrade: 90, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'Fundamentals of ABM', icon: '📊', color: '#f59e0b', weight: 4, targetGrade: 85, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'Oral Communication', icon: '🎤', color: '#ec4899', weight: 2, targetGrade: 90, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
+      { subjectName: 'Humanities & Social Sciences', icon: '🌍', color: '#06b6d4', weight: 4, targetGrade: 88, gradeWeights: DEPED_SHS_CORE_WEIGHTS },
     ],
   },
 ];

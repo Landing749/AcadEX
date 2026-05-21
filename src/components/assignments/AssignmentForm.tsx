@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal';
 import { FileUpload } from '../uploads/FileUpload';
-import { Assignment, AssignmentType, AssignmentStatus, Priority, ASSIGNMENT_TYPES, Subject, Attachment } from '../../types';
+import {
+  Assignment, AssignmentType, AssignmentStatus, Priority, GradeCategory,
+  ASSIGNMENT_TYPES, GRADE_CATEGORIES, TYPE_TO_GRADE_CATEGORY, Subject, Attachment,
+} from '../../types';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 
@@ -18,6 +21,7 @@ export function AssignmentForm({ isOpen, onClose, onSubmit, subjects, editingAss
   const [title, setTitle] = useState('');
   const [subjectId, setSubjectId] = useState(defaultSubjectId || '');
   const [type, setType] = useState<AssignmentType>('homework');
+  const [gradeCategory, setGradeCategory] = useState<GradeCategory>('written_work');
   const [dueDate, setDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dueTime, setDueTime] = useState('23:59');
   const [status, setStatus] = useState<AssignmentStatus>('pending');
@@ -35,6 +39,7 @@ export function AssignmentForm({ isOpen, onClose, onSubmit, subjects, editingAss
       setTitle(editingAssignment.title);
       setSubjectId(editingAssignment.subjectId);
       setType(editingAssignment.type);
+      setGradeCategory(editingAssignment.gradeCategory ?? TYPE_TO_GRADE_CATEGORY[editingAssignment.type]);
       setDueDate(editingAssignment.dueDate);
       setDueTime(editingAssignment.dueTime || '23:59');
       setStatus(editingAssignment.status);
@@ -46,13 +51,20 @@ export function AssignmentForm({ isOpen, onClose, onSubmit, subjects, editingAss
       setAttachments(editingAssignment.attachments || []);
     } else {
       setTitle(''); setSubjectId(defaultSubjectId || subjects[0]?.subjectId || '');
-      setType('homework'); setDueDate(format(new Date(), 'yyyy-MM-dd'));
+      setType('homework'); setGradeCategory('written_work');
+      setDueDate(format(new Date(), 'yyyy-MM-dd'));
       setDueTime('23:59'); setStatus('pending'); setScoreEarned('');
       setTotalScore(''); setNotes(''); setPriority('medium');
       setEstimatedTime(30); setAttachments([]);
     }
     setActiveTab('details');
   }, [editingAssignment, isOpen]);
+
+  // When assignment type changes, auto-suggest the matching grade category
+  const handleTypeChange = (newType: AssignmentType) => {
+    setType(newType);
+    setGradeCategory(TYPE_TO_GRADE_CATEGORY[newType]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +80,7 @@ export function AssignmentForm({ isOpen, onClose, onSubmit, subjects, editingAss
         subjectName: subject?.subjectName || '',
         subjectColor: subject?.color || '#6366f1',
         type,
+        gradeCategory,
         dueDate,
         dueTime,
         status,
@@ -141,12 +154,43 @@ export function AssignmentForm({ isOpen, onClose, onSubmit, subjects, editingAss
                 </select>
               </div>
               <div>
-                <label className="label">Type</label>
-                <select value={type} onChange={e => setType(e.target.value as AssignmentType)} className="input">
+                <label className="label">Activity Type</label>
+                <select value={type} onChange={e => handleTypeChange(e.target.value as AssignmentType)} className="input">
                   {ASSIGNMENT_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Grade Category — the 3-component selector */}
+            <div>
+              <label className="label">Grade Component</label>
+              <p className="text-xs text-gray-400 mb-2">
+                Which of your school's 3 grade components does this belong to?
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {GRADE_CATEGORIES.map(cat => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => setGradeCategory(cat.value)}
+                    className={`p-3 rounded-xl text-center transition-all border-2 ${
+                      gradeCategory === cat.value
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                        : 'border-transparent bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    <p className="text-xl mb-1">{cat.icon}</p>
+                    <p className={`text-xs font-semibold leading-tight ${
+                      gradeCategory === cat.value
+                        ? 'text-indigo-700 dark:text-indigo-400'
+                        : 'text-gray-600 dark:text-gray-300'
+                    }`}>
+                      {cat.label}
+                    </p>
+                  </button>
+                ))}
               </div>
             </div>
 

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getDatabase, enableLogging } from 'firebase/database';
+import { getDatabase } from 'firebase/database';
+import { getMessaging, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: "AIzaSyA7MctYf3RK7eAqZ9cXMW3sc0bn-yrIPFE",
@@ -17,5 +18,18 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getDatabase(app);
+
+// FCM messaging — only works in browsers that support it (not Safari < 16, not Node)
+// Use getMessagingInstance() helper rather than calling getMessaging() directly at module load,
+// because getMessaging() throws in unsupported environments.
+let _messaging: ReturnType<typeof getMessaging> | null = null;
+
+export async function getMessagingInstance() {
+  if (_messaging) return _messaging;
+  const supported = await isSupported();
+  if (!supported) return null;
+  _messaging = getMessaging(app);
+  return _messaging;
+}
 
 export default app;

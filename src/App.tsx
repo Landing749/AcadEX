@@ -14,6 +14,7 @@ import { AnalyticsView } from './components/analytics/AnalyticsView';
 import { PresetsView } from './components/presets/PresetsView';
 import { CommunityView } from './components/community/CommunityView';
 import { ProfileView, PublicProfilePage } from './components/profile/ProfileView';
+import { useNotifications } from './hooks/useNotifications';
 
 type Page = 'dashboard' | 'subjects' | 'assignments' | 'grades' | 'calendar' | 'analytics' | 'presets' | 'community' | 'profile';
 
@@ -23,6 +24,9 @@ const SHARED_PROFILE_ID = new URLSearchParams(window.location.search).get('profi
 function AppContent() {
   const { currentUser, loading } = useAuth();
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+
+  // Register FCM token and listen for foreground push messages
+  useNotifications();
 
   // Show public profile page for anyone who visits a share link, logged in or not
   if (SHARED_PROFILE_ID) {
