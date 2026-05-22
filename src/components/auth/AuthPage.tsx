@@ -78,8 +78,8 @@ export function AuthPage() {
           <p className="text-gray-400 mt-1 text-sm">Your academic productivity companion</p>
         </div>
 
-        {/* Card */}
-        <div className="glass rounded-3xl p-8 shadow-2xl border border-white/10 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+        {/* Card — always dark since auth page sits on a dark gradient */}
+        <div className="rounded-3xl p-8 shadow-2xl border border-white/10 animate-slide-up" style={{ animationDelay: '0.1s', background: 'rgba(17,24,39,0.85)', backdropFilter: 'blur(16px)' }}>
           <div className="mb-6">
             <h2 className="text-xl font-bold text-white">
               {mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create account' : 'Reset password'}

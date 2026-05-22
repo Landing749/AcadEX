@@ -16,6 +16,7 @@ import { CommunityView } from './components/community/CommunityView';
 import { ProfileView, PublicProfilePage } from './components/profile/ProfileView';
 import { useNotifications } from './hooks/useNotifications';
 import { useGradeNotifications } from './hooks/useGradeNotifications';
+import { useReplyNotifications } from './hooks/useReplyNotifications';
 
 type Page = 'dashboard' | 'subjects' | 'assignments' | 'grades' | 'calendar' | 'analytics' | 'presets' | 'community' | 'profile';
 
@@ -29,6 +30,7 @@ function AppContent() {
   // Register FCM token and listen for foreground push messages
   useNotifications();
   useGradeNotifications();
+  useReplyNotifications();
 
   // Show public profile page for anyone who visits a share link, logged in or not
   if (SHARED_PROFILE_ID) {

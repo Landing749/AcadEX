@@ -7,7 +7,7 @@ import {
   getCachedAssignments, cacheAssignment, cacheAssignments, deleteCachedAssignment,
   queueOfflineAction,
 } from '../lib/indexeddb';
-import { Subject, Assignment, GradePreset, HelpPost, HelpReply, UserProfile } from '../types';
+import { Subject, Assignment, GradePreset, HelpPost, HelpReply, UserProfile, DirectMessage, Connection } from '../types';
 import { generateId } from '../utils/helpers';
 
 /** Remove undefined values recursively — Firebase RTDB rejects them */
@@ -263,7 +263,15 @@ export function useCommunity() {
   }, []);
 
   const addPost = useCallback(async (data: Omit<HelpPost, 'postId' | 'createdAt' | 'replyCount' | 'upvotes' | 'upvotedBy'>) => {
-    const post: HelpPost = { ...data, postId: generateId(), createdAt: Date.now(), replyCount: 0, upvotes: 0, upvotedBy: [] };
+    const post: HelpPost = {
+      ...data,
+      postType: data.postType || 'question',
+      postId: generateId(),
+      createdAt: Date.now(),
+      replyCount: 0,
+      upvotes: 0,
+      upvotedBy: [],
+    };
     setPosts(prev => [post, ...prev]);
     if (navigator.onLine) await set(ref(db, `community/posts/${post.postId}`), post);
     return post;
@@ -330,7 +338,150 @@ export function useCommunity() {
     }
   }, []);
 
-  return { posts, replies, loading, addPost, addReply, upvotePost, upvoteReply, markReplyResolved };
+  const rsvpStudyGroup = useCallback(async (postId: string, userId: string) => {
+    setPosts(prev => prev.map(p => {
+      if (p.postId !== postId) return p;
+      const alreadyRsvpd = p.studyGroupRsvps?.includes(userId);
+      const studyGroupRsvps = alreadyRsvpd
+        ? (p.studyGroupRsvps || []).filter(id => id !== userId)
+        : [...(p.studyGroupRsvps || []), userId];
+      return { ...p, studyGroupRsvps };
+    }));
+    if (navigator.onLine) {
+      onValue(ref(db, `community/posts/${postId}`), (snap) => {
+        const post = snap.val();
+        if (post) {
+          const alreadyRsvpd = (post.studyGroupRsvps || []).includes(userId);
+          const studyGroupRsvps = alreadyRsvpd
+            ? post.studyGroupRsvps.filter((id: string) => id !== userId)
+            : [...(post.studyGroupRsvps || []), userId];
+          set(ref(db, `community/posts/${postId}`), { ...post, studyGroupRsvps });
+        }
+      }, { onlyOnce: true });
+    }
+  }, []);
+
+  return { posts, replies, loading, addPost, addReply, upvotePost, upvoteReply, markReplyResolved, rsvpStudyGroup };
+}
+
+// ---- SAVED POSTS ----
+
+export function useSavedPosts() {
+  const { currentUser } = useAuth();
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!currentUser || !navigator.onLine) return;
+    const savedRef = ref(db, `savedPosts/${currentUser.uid}`);
+    const unsub = onValue(savedRef, (snap) => {
+      const data = snap.val();
+      setSavedIds(new Set(data ? Object.keys(data) : []));
+    });
+    return () => unsub();
+  }, [currentUser]);
+
+  const toggleSave = useCallback(async (postId: string) => {
+    if (!currentUser) return;
+    const isSaved = savedIds.has(postId);
+    setSavedIds(prev => {
+      const next = new Set(prev);
+      if (isSaved) next.delete(postId); else next.add(postId);
+      return next;
+    });
+    if (navigator.onLine) {
+      const nodeRef = ref(db, `savedPosts/${currentUser.uid}/${postId}`);
+      if (isSaved) await remove(nodeRef);
+      else await set(nodeRef, { savedAt: Date.now() });
+    }
+  }, [currentUser, savedIds]);
+
+  return { savedIds, toggleSave };
+}
+
+// ---- DIRECT MESSAGES ----
+
+export function useDirectMessages(otherUserId: string | null) {
+  const { currentUser } = useAuth();
+  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!currentUser || !otherUserId || !navigator.onLine) { setLoading(false); return; }
+
+    // Listen to both sides of the conversation
+    const myRef = ref(db, `messages/${currentUser.uid}/${otherUserId}`);
+    const unsub = onValue(myRef, (snap) => {
+      const data = snap.val();
+      const list: DirectMessage[] = data ? Object.values(data) as DirectMessage[] : [];
+      setMessages(list.sort((a, b) => a.createdAt - b.createdAt));
+      setLoading(false);
+    }, () => setLoading(false));
+
+    return () => unsub();
+  }, [currentUser, otherUserId]);
+
+  const sendMessage = useCallback(async (body: string) => {
+    if (!currentUser || !otherUserId) return;
+    const msg: DirectMessage = {
+      messageId: generateId(),
+      senderId: currentUser.uid,
+      senderName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+      recipientId: otherUserId,
+      body,
+      createdAt: Date.now(),
+      read: false,
+    };
+    setMessages(prev => [...prev, msg]);
+    if (navigator.onLine) {
+      // Store under both users' paths so each can see the thread
+      await set(ref(db, `messages/${currentUser.uid}/${otherUserId}/${msg.messageId}`), msg);
+      await set(ref(db, `messages/${otherUserId}/${currentUser.uid}/${msg.messageId}`), msg);
+    }
+    return msg;
+  }, [currentUser, otherUserId]);
+
+  return { messages, loading, sendMessage };
+}
+
+// ---- CONNECTIONS ----
+
+export function useConnections() {
+  const { currentUser } = useAuth();
+  const [connections, setConnections] = useState<Connection[]>([]);
+
+  useEffect(() => {
+    if (!currentUser || !navigator.onLine) return;
+    const connRef = ref(db, `connections/${currentUser.uid}`);
+    const unsub = onValue(connRef, (snap) => {
+      const data = snap.val();
+      const list: Connection[] = data ? Object.values(data) as Connection[] : [];
+      setConnections(list);
+    });
+    return () => unsub();
+  }, [currentUser]);
+
+  const toggleConnection = useCallback(async (targetUserId: string, targetUserName: string) => {
+    if (!currentUser) return;
+    const isConnected = connections.some(c => c.userId === targetUserId);
+
+    if (isConnected) {
+      setConnections(prev => prev.filter(c => c.userId !== targetUserId));
+      if (navigator.onLine) await remove(ref(db, `connections/${currentUser.uid}/${targetUserId}`));
+    } else {
+      const myName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+      const conn: Connection = { userId: targetUserId, userName: targetUserName, connectedAt: Date.now() };
+      setConnections(prev => [...prev, conn]);
+      if (navigator.onLine) {
+        await set(ref(db, `connections/${currentUser.uid}/${targetUserId}`), conn);
+        // Reciprocal: add current user to target's connections too
+        const reciprocal: Connection = { userId: currentUser.uid, userName: myName, connectedAt: Date.now() };
+        await set(ref(db, `connections/${targetUserId}/${currentUser.uid}`), reciprocal);
+      }
+    }
+    return !isConnected;
+  }, [currentUser, connections]);
+
+  return { connections, toggleConnection };
 }
 
 // ---- USER PROFILE ----

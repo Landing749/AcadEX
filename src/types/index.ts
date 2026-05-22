@@ -146,6 +146,15 @@ export interface GradePreset {
 }
 
 // ---- COMMUNITY HELP BOARD ----
+export type PostType = 'question' | 'study_group' | 'notes_share' | 'exam_tip';
+
+export const POST_TYPE_META: Record<PostType, { label: string; icon: string; color: string; bg: string; darkBg: string }> = {
+  question:    { label: 'Question',    icon: '❓', color: 'text-blue-600 dark:text-blue-400',   bg: 'bg-blue-50',   darkBg: 'dark:bg-blue-500/10' },
+  study_group: { label: 'Study Group', icon: '👥', color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50', darkBg: 'dark:bg-violet-500/10' },
+  notes_share: { label: 'Notes Share', icon: '📝', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50', darkBg: 'dark:bg-emerald-500/10' },
+  exam_tip:    { label: 'Exam Tip',    icon: '💡', color: 'text-amber-600 dark:text-amber-400',  bg: 'bg-amber-50',  darkBg: 'dark:bg-amber-500/10' },
+};
+
 export interface HelpPost {
   postId: string;
   title: string;
@@ -157,7 +166,11 @@ export interface HelpPost {
   createdAt: number;
   replyCount: number;
   upvotes: number;
-  upvotedBy: string[]; // array of userIds
+  upvotedBy: string[];
+  postType: PostType;
+  isAnonymous?: boolean;
+  studyGroupDate?: string;   // ISO date string for study group meetups
+  studyGroupRsvps?: string[]; // userIds who RSVPed
 }
 
 export interface HelpReply {
@@ -170,6 +183,22 @@ export interface HelpReply {
   upvotes: number;
   upvotedBy: string[];
   isResolved?: boolean;
+}
+
+export interface DirectMessage {
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  body: string;
+  createdAt: number;
+  read: boolean;
+}
+
+export interface Connection {
+  userId: string;
+  userName: string;
+  connectedAt: number;
 }
 
 // ---- USER PROFILE ----
