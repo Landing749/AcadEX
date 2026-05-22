@@ -11,6 +11,7 @@ import {
   colorWithOpacity, getDaysUntilDue, cn
 } from '../../utils/helpers';
 import { format, isToday, isTomorrow, addDays } from 'date-fns';
+import { TodayWidget } from './TodayWidget';
 
 interface DashboardProps {
   onNavigate: (page: string) => void;
@@ -141,6 +142,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           </button>
         ))}
       </div>
+
+      {/* Today's Schedule Widget */}
+      <TodayWidget />
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

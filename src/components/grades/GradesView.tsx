@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Award, TrendingUp, BarChart2, Star, Scale } from 'lucide-react';
+import { Award, TrendingUp, BarChart2, Star, Scale, Share2, Lightbulb } from 'lucide-react';
 import { useAssignments, useSubjects } from '../../hooks/useFirebase';
 import { percentageToLetterGrade, percentageToGPA, cn } from '../../utils/helpers';
 import { GRADE_CATEGORIES, GradeCategory, DEFAULT_GRADE_WEIGHTS, TYPE_TO_GRADE_CATEGORY } from '../../types';
+import { ReportCard } from './ReportCard';
+import { GradeImprovements } from './GradeImprovements';
 
 export function GradesView() {
   const { assignments, loading } = useAssignments();
@@ -336,6 +338,23 @@ export function GradesView() {
               </div>
             </div>
           )}
+          {/* Grade Improvement Suggestions */}
+          <div className="card p-5">
+            <h2 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Lightbulb size={18} className="text-amber-500" />
+              Grade Improvement Suggestions
+            </h2>
+            <GradeImprovements />
+          </div>
+
+          {/* Shareable Report Card */}
+          <div className="card p-5">
+            <h2 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Share2 size={18} className="text-indigo-500" />
+              Report Card
+            </h2>
+            <ReportCard />
+          </div>
         </>
       )}
 
