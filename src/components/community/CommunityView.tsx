@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   MessageCircle, ThumbsUp, Plus, Send, School, Tag,
   ChevronDown, ChevronUp, Clock, Search, CheckCircle2,
-  AlertCircle, ArrowLeft,
+  AlertCircle, ArrowLeft, Users2, X,
 } from 'lucide-react';
-import { useCommunity } from '../../hooks/useFirebase';
+import { useCommunity, useProfile } from '../../hooks/useFirebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { HelpPost, HelpReply, PHILIPPINE_SCHOOLS } from '../../types';
 import { Modal } from '../ui/Modal';
@@ -317,11 +317,166 @@ function PostCard({
   );
 }
 
+// ---- Study Partner Modal ----
+function StudyPartnerModal({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const { posts } = useCommunity();
+  const { profile } = useProfile();
+  const [subjectFilter, setSubjectFilter] = useState('');
+  const [schoolFilter, setSchoolFilter] = useState(profile?.school || '');
+
+  // Derive unique schools and subjects from existing posts
+  const schools = useMemo(
+    () => [...new Set(posts.map(p => p.schoolTag).filter(Boolean))].sort(),
+    [posts]
+  );
+  const subjects = useMemo(
+    () => [...new Set(posts.map(p => p.subjectTag).filter(Boolean))].sort(),
+    [posts]
+  );
+
+  // A "study partner" is any post author who has posted in the same school+subject combo
+  // We group by author and show their activity
+  const partners = useMemo(() => {
+    const filtered = posts.filter(p => {
+      const matchSchool = !schoolFilter || p.schoolTag === schoolFilter;
+      const matchSubject = !subjectFilter || p.subjectTag?.toLowerCase().includes(subjectFilter.toLowerCase());
+      return matchSchool && matchSubject && Boolean(p.authorName);
+    });
+
+    const byAuthor = new Map<string, {
+      authorId: string;
+      authorName: string;
+      schools: Set<string>;
+      subjects: Set<string>;
+      postCount: number;
+      lastActive: number;
+    }>();
+
+    for (const p of filtered) {
+      const existing = byAuthor.get(p.authorId);
+      if (existing) {
+        existing.schools.add(p.schoolTag);
+        if (p.subjectTag) existing.subjects.add(p.subjectTag);
+        existing.postCount++;
+        if (p.createdAt > existing.lastActive) existing.lastActive = p.createdAt;
+      } else {
+        byAuthor.set(p.authorId, {
+          authorId: p.authorId,
+          authorName: p.authorName,
+          schools: new Set([p.schoolTag]),
+          subjects: new Set(p.subjectTag ? [p.subjectTag] : []),
+          postCount: 1,
+          lastActive: p.createdAt,
+        });
+      }
+    }
+
+    return [...byAuthor.values()]
+      .sort((a, b) => b.lastActive - a.lastActive)
+      .slice(0, 20);
+  }, [posts, schoolFilter, subjectFilter]);
+
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Find a Study Partner" size="md">
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500">
+          Filter by school and subject to find students to study with.
+        </p>
+
+        {/* Filters */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">School</label>
+            <select
+              value={schoolFilter}
+              onChange={e => setSchoolFilter(e.target.value)}
+              className="input text-sm"
+            >
+              <option value="">All schools</option>
+              {schools.map(s => (
+                <option key={s} value={s}>{s.length > 30 ? s.slice(0, 28) + '…' : s}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Subject</label>
+            <input
+              value={subjectFilter}
+              onChange={e => setSubjectFilter(e.target.value)}
+              className="input text-sm"
+              placeholder="e.g. Math, Physics…"
+            />
+          </div>
+        </div>
+
+        {/* Results */}
+        {partners.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">
+            <Users2 size={32} className="mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+            <p className="text-sm font-medium">No matches yet.</p>
+            <p className="text-xs mt-1">Try broadening your filters.</p>
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {partners.map(p => (
+              <div
+                key={p.authorId}
+                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10"
+              >
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                  {getInitials(p.authorName)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                    {p.authorName}
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                    {[...p.schools].slice(0, 1).map(s => (
+                      <span key={s} className="text-xs text-blue-500 flex items-center gap-0.5">
+                        <School size={10} />
+                        {s.length > 25 ? s.slice(0, 23) + '…' : s}
+                      </span>
+                    ))}
+                    {[...p.subjects].slice(0, 3).map(s => (
+                      <span key={s} className="text-xs px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                    {p.postCount} post{p.postCount > 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-gray-400">{formatRelativeTime(p.lastActive)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400">
+          Connect by replying to their posts in the Help Feed.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
 // ---- Main Community View ----
 export function CommunityView() {
   const { currentUser } = useAuth();
   const { posts, replies, loading, addPost, addReply, upvotePost, upvoteReply, markReplyResolved } = useCommunity();
   const [showNewPost, setShowNewPost] = useState(false);
+  const [showPartners, setShowPartners] = useState(false);
   const [selectedPost, setSelectedPost] = useState<HelpPost | null>(null);
   const [search, setSearch] = useState('');
   const [schoolFilter, setSchoolFilter] = useState('all');
@@ -396,9 +551,14 @@ export function CommunityView() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Study Help</h1>
           <p className="text-sm text-gray-500">Ask questions, help classmates across PH schools</p>
         </div>
-        <button onClick={() => setShowNewPost(true)} className="btn-primary shrink-0 text-sm">
-          <Plus size={14} /> Ask
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowPartners(true)} className="btn-secondary shrink-0 text-sm">
+            <Users2 size={14} /> Find Partner
+          </button>
+          <button onClick={() => setShowNewPost(true)} className="btn-primary shrink-0 text-sm">
+            <Plus size={14} /> Ask
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -468,6 +628,10 @@ export function CommunityView() {
         isOpen={showNewPost}
         onClose={() => setShowNewPost(false)}
         onSubmit={handleNewPost}
+      />
+      <StudyPartnerModal
+        isOpen={showPartners}
+        onClose={() => setShowPartners(false)}
       />
     </div>
   );

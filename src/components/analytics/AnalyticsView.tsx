@@ -8,6 +8,8 @@ import { useAssignments, useSubjects } from '../../hooks/useFirebase';
 import { ASSIGNMENT_TYPES } from '../../types';
 import { percentageToLetterGrade, cn } from '../../utils/helpers';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
+import { GradeTrend } from './GradeTrend';
+import { SubjectDifficultyRanking } from './SubjectDifficultyRanking';
 
 export function AnalyticsView() {
   const { assignments } = useAssignments();
@@ -153,28 +155,11 @@ export function AnalyticsView() {
         </div>
       )}
 
-      {/* Grade Trend */}
-      {trendData.length > 1 && (
-        <div className="card p-5">
-          <h2 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="text-violet-500" />
-            Grade Trend
-          </h2>
-          <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={trendData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-white/10" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#94a3b8' }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="monotone" dataKey="avg" stroke="#6366f1"
-                strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }}
-                name="Grade %"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+      {/* Grade Trend Over Time */}
+      <GradeTrend />
+
+      {/* Subject Difficulty Ranking */}
+      <SubjectDifficultyRanking />
 
       {/* Donut Charts Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
