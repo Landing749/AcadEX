@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ref, set, remove, onValue } from 'firebase/database';
+import { ref, set, get, update, remove, onValue } from 'firebase/database';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -729,11 +729,14 @@ export function useAdminReports() {
   }, []);
 
   const updateReportStatus = useCallback(async (reportId: string, status: import('../types').ReportStatus, adminNote?: string) => {
+    // Optimistic local update
     setReports(prev => prev.map(r => r.reportId === reportId ? { ...r, status, adminNote, reviewedAt: Date.now() } : r));
-    onValue(ref(db, `reports/${reportId}`), (snap) => {
-      const r = snap.val();
-      if (r) set(ref(db, `reports/${reportId}`), { ...r, status, adminNote, reviewedAt: Date.now() });
-    }, { onlyOnce: true });
+    // Await the Firebase write so the status persists across refreshes
+    await update(ref(db, `reports/${reportId}`), {
+      status,
+      adminNote: adminNote ?? null,
+      reviewedAt: Date.now(),
+    });
   }, []);
 
   const deletePost = useCallback(async (postId: string) => {
