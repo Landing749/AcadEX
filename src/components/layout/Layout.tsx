@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
   BookOpen, LayoutDashboard, ClipboardList, Award, Calendar,
-  BarChart2, Menu, X, LogOut, Sun, Moon, Bell, Bookmark, MessageCircle, UserCircle
+  BarChart2, Menu, X, LogOut, Sun, Moon, Bell, Bookmark, MessageCircle, UserCircle, Shield
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useProfile } from '../../hooks/useFirebase';
+import { useProfile, useAdminAccess } from '../../hooks/useFirebase';
 import { SyncIndicator } from '../ui/SyncIndicator';
+import { NotificationCenter } from '../notifications/NotificationCenter';
 import { cn, getInitials, requestNotificationPermission } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
@@ -17,18 +18,17 @@ interface LayoutProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'subjects', label: 'Subjects', icon: BookOpen },
-  { id: 'assignments', label: 'Assignments', icon: ClipboardList },
-  { id: 'grades', label: 'Grades', icon: Award },
-  { id: 'calendar', label: 'Calendar', icon: Calendar },
-  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
-  { id: 'presets', label: 'Presets', icon: Bookmark },
-  { id: 'community', label: 'Study Help', icon: MessageCircle },
-  { id: 'profile', label: 'Profile', icon: UserCircle },
+  { id: 'dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
+  { id: 'subjects',    label: 'Subjects',     icon: BookOpen },
+  { id: 'assignments', label: 'Assignments',  icon: ClipboardList },
+  { id: 'grades',      label: 'Grades',       icon: Award },
+  { id: 'calendar',    label: 'Calendar',     icon: Calendar },
+  { id: 'analytics',   label: 'Analytics',    icon: BarChart2 },
+  { id: 'presets',     label: 'Presets',      icon: Bookmark },
+  { id: 'community',   label: 'Study Help',   icon: MessageCircle },
+  { id: 'profile',     label: 'Profile',      icon: UserCircle },
 ];
 
-// Bottom nav shows first 4 + community + profile
 const BOTTOM_NAV = ['dashboard', 'assignments', 'grades', 'community', 'profile'];
 
 export function Layout({ currentPage, onNavigate, children }: LayoutProps) {
@@ -37,20 +37,21 @@ export function Layout({ currentPage, onNavigate, children }: LayoutProps) {
   const { profile } = useProfile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const { isAdmin } = useAdminAccess();
+
   const handleLogout = async () => {
     await logout();
     toast.success('Signed out');
-  };
-
-  const handleNotifications = () => {
-    requestNotificationPermission();
-    toast.success('Notifications enabled!');
   };
 
   const navigate = (page: string) => {
     onNavigate(page);
     setSidebarOpen(false);
   };
+
+  const allNavItems = isAdmin
+    ? [...NAV_ITEMS, { id: 'admin', label: 'Admin', icon: Shield }]
+    : NAV_ITEMS;
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
@@ -84,21 +85,31 @@ export function Layout({ currentPage, onNavigate, children }: LayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map(item => {
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+          {allNavItems.map(item => {
             const Icon = item.icon;
             const isCommunity = item.id === 'community';
+            const isAdminItem = item.id === 'admin';
             return (
               <button
                 key={item.id}
                 onClick={() => navigate(item.id)}
-                className={cn('sidebar-item w-full', currentPage === item.id && 'active')}
+                className={cn(
+                  'sidebar-item w-full',
+                  currentPage === item.id && 'active',
+                  isAdminItem && 'mt-2 border-t border-gray-100 dark:border-white/10 pt-2'
+                )}
               >
-                <Icon size={18} />
-                <span>{item.label}</span>
+                <Icon size={18} className={isAdminItem ? 'text-red-500' : ''} />
+                <span className={isAdminItem ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>{item.label}</span>
                 {isCommunity && (
                   <span className="ml-auto text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-semibold">
                     PH
+                  </span>
+                )}
+                {isAdminItem && (
+                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400 font-semibold">
+                    MOD
                   </span>
                 )}
               </button>
@@ -137,13 +148,9 @@ export function Layout({ currentPage, onNavigate, children }: LayoutProps) {
               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
               {theme === 'dark' ? 'Light' : 'Dark'}
             </button>
-            <button onClick={handleNotifications} className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors text-xs">
-              <Bell size={14} />
-              Alerts
-            </button>
             <button onClick={handleLogout} className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors text-xs">
               <LogOut size={14} />
-              Out
+              Sign Out
             </button>
           </div>
         </div>
@@ -151,26 +158,52 @@ export function Layout({ currentPage, onNavigate, children }: LayoutProps) {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile Topbar */}
-        <header className="flex items-center justify-between px-4 h-14 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-white/5 lg:hidden shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
-            <Menu size={20} className="text-gray-600 dark:text-gray-400" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <BookOpen size={12} className="text-white" />
+        {/* Topbar */}
+        <header className="flex items-center justify-between px-4 h-14 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-white/5 shrink-0">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors lg:hidden">
+              <Menu size={20} className="text-gray-600 dark:text-gray-400" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-indigo-600 rounded-lg flex items-center justify-center">
+                <BookOpen size={12} className="text-white" />
+              </div>
+              <span className="text-base font-bold text-gray-900 dark:text-white" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                Acade<span className="text-indigo-500">x</span>
+              </span>
             </div>
-            <span className="text-base font-bold text-gray-900 dark:text-white" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-              Acade<span className="text-indigo-500">x</span>
-            </span>
           </div>
-          <SyncIndicator />
+
+          {/* Right side: sync + notification bell */}
+          <div className="flex items-center gap-2">
+            <div className="hidden lg:block">
+              <SyncIndicator />
+            </div>
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-500 dark:text-gray-400 hidden lg:flex"
+            >
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <NotificationCenter onNavigate={navigate} />
+            {/* Profile avatar button */}
+            <button
+              onClick={() => navigate('profile')}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden"
+              style={{ background: profile?.avatarBg || '#6366f1' }}
+            >
+              {profile?.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                getInitials(currentUser?.displayName || currentUser?.email || 'U')
+              )}
+            </button>
+          </div>
         </header>
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto">
           {children}
-          {/* Bottom padding for mobile nav */}
           <div className="h-20 lg:hidden" />
         </main>
       </div>

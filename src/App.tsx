@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -14,30 +15,65 @@ import { AnalyticsView } from './components/analytics/AnalyticsView';
 import { PresetsView } from './components/presets/PresetsView';
 import { CommunityView } from './components/community/CommunityView';
 import { ProfileView, PublicProfilePage } from './components/profile/ProfileView';
+import { AdminPanel } from './components/admin/AdminPanel';
+import { AdminGate } from './components/admin/AdminGate';
+import { OnboardingFlow } from './components/onboarding/OnboardingFlow';
 import { useNotifications } from './hooks/useNotifications';
 import { useGradeNotifications } from './hooks/useGradeNotifications';
 import { useReplyNotifications } from './hooks/useReplyNotifications';
+import { useOnboarding, useProfile } from './hooks/useFirebase';
 
-type Page = 'dashboard' | 'subjects' | 'assignments' | 'grades' | 'calendar' | 'analytics' | 'presets' | 'community' | 'profile';
+// Page id → route path mapping
+const PAGE_ROUTES: Record<string, string> = {
+  dashboard:   '/',
+  subjects:    '/subjects',
+  assignments: '/assignments',
+  grades:      '/grades',
+  calendar:    '/calendar',
+  analytics:   '/analytics',
+  presets:     '/presets',
+  community:   '/community',
+  profile:     '/profile',
+  admin:       '/admin',
+};
 
-// Read ?profile= from URL once at module load — stable, no re-render needed
-const SHARED_PROFILE_ID = new URLSearchParams(window.location.search).get('profile');
+const ROUTE_PAGES: Record<string, string> = Object.fromEntries(
+  Object.entries(PAGE_ROUTES).map(([k, v]) => [v, k])
+);
 
 function AppContent() {
   const { currentUser, loading } = useAuth();
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { profile, loading: profileLoading } = useProfile();
+  const [onboardingDone, setOnboardingDone] = useState(false);
 
-  // Register FCM token and listen for foreground push messages
   useNotifications();
   useGradeNotifications();
   useReplyNotifications();
 
-  // Show public profile page for anyone who visits a share link, logged in or not
-  if (SHARED_PROFILE_ID) {
-    return <PublicProfilePage shareId={SHARED_PROFILE_ID} />;
-  }
+  // Derive current page from URL
+  const currentPage = ROUTE_PAGES[location.pathname] || 'dashboard';
 
-  if (loading) {
+  const onNavigate = (page: string) => {
+    const path = PAGE_ROUTES[page] || '/';
+    navigate(path);
+  };
+
+  // Onboarding check
+  const needsOnboarding = !!(
+    currentUser &&
+    !profileLoading &&
+    !(profile as any)?.onboardingCompleted &&
+    !localStorage.getItem(`acadex_onboarding_${currentUser.uid}`) &&
+    !onboardingDone
+  );
+
+  // Show public profile for share links (?profile=xyz)
+  const shareProfileId = new URLSearchParams(location.search).get('profile');
+  if (shareProfileId) return <PublicProfilePage shareId={shareProfileId} />;
+
+  if (loading || (currentUser && profileLoading)) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-gray-900">
         <div className="text-center">
@@ -52,25 +88,32 @@ function AppContent() {
 
   if (!currentUser) return <AuthPage />;
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'dashboard':    return <Dashboard onNavigate={p => setCurrentPage(p as Page)} />;
-      case 'subjects':     return <SubjectsView />;
-      case 'assignments':  return <AssignmentsView />;
-      case 'grades':       return <GradesView />;
-      case 'calendar':     return <CalendarView />;
-      case 'analytics':    return <AnalyticsView />;
-      case 'presets':      return <PresetsView />;
-      case 'community':    return <CommunityView />;
-      case 'profile':      return <ProfileView />;
-      default:             return <Dashboard onNavigate={p => setCurrentPage(p as Page)} />;
-    }
-  };
+  if (needsOnboarding) {
+    return (
+      <OnboardingFlow onComplete={() => {
+        setOnboardingDone(true);
+        localStorage.setItem(`acadex_onboarding_${currentUser.uid}`, 'done');
+      }} />
+    );
+  }
 
   return (
     <SyncProvider>
-      <Layout currentPage={currentPage} onNavigate={p => setCurrentPage(p as Page)}>
-        {renderPage()}
+      <Layout currentPage={currentPage} onNavigate={onNavigate}>
+        <Routes>
+          <Route path="/"            element={<Dashboard onNavigate={onNavigate} />} />
+          <Route path="/subjects"    element={<SubjectsView />} />
+          <Route path="/assignments" element={<AssignmentsView />} />
+          <Route path="/grades"      element={<GradesView />} />
+          <Route path="/calendar"    element={<CalendarView />} />
+          <Route path="/analytics"   element={<AnalyticsView />} />
+          <Route path="/presets"     element={<PresetsView />} />
+          <Route path="/community"   element={<CommunityView />} />
+          <Route path="/profile"     element={<ProfileView />} />
+          <Route path="/admin"       element={<AdminGate><AdminPanel /></AdminGate>} />
+          <Route path="/admin/*"     element={<AdminGate><AdminPanel /></AdminGate>} />
+          <Route path="*"            element={<Navigate to="/" replace />} />
+        </Routes>
       </Layout>
     </SyncProvider>
   );
@@ -78,26 +121,28 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            duration: 3000,
-            style: {
-              borderRadius: '12px',
-              fontSize: '14px',
-              fontFamily: 'DM Sans, sans-serif',
-              fontWeight: '500',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
-            },
-            success: { iconTheme: { primary: '#6366f1', secondary: '#fff' } },
-            error:   { iconTheme: { primary: '#f43f5e', secondary: '#fff' } },
-          }}
-        />
-      </AuthProvider>
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppContent />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              duration: 3000,
+              style: {
+                borderRadius: '12px',
+                fontSize: '14px',
+                fontFamily: 'DM Sans, sans-serif',
+                fontWeight: '500',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
+              },
+              success: { iconTheme: { primary: '#6366f1', secondary: '#fff' } },
+              error:   { iconTheme: { primary: '#f43f5e', secondary: '#fff' } },
+            }}
+          />
+        </AuthProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   );
 }
 

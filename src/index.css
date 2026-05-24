@@ -42,3 +42,40 @@
 @media (display-mode: standalone) {
   body { overscroll-behavior-y: none; }
 }
+/* ── New feature styles ───────────────────────────────────── */
+@layer utilities {
+  .shadow-glow      { box-shadow: 0 0 20px rgba(99,102,241,0.4); }
+  .shadow-glow-sm   { box-shadow: 0 0 12px rgba(99,102,241,0.35); }
+  .shadow-glow-red  { box-shadow: 0 0 20px rgba(239,68,68,0.35); }
+  .card-hover       { @apply hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200; }
+  .animate-fade-in  { animation: fadeIn 0.25s ease-out; }
+  .animate-slide-up { animation: slideUp 0.35s ease-out; }
+  .animate-slide-in { animation: slideIn 0.3s ease-out; }
+  .animate-pop      { animation: pop 0.2s ease-out; }
+}
+
+@keyframes fadeIn   { from { opacity: 0; }                         to { opacity: 1; } }
+@keyframes slideUp  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideIn  { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes pop      { 0% { transform: scale(0.9); opacity: 0; }  60% { transform: scale(1.04); } 100% { transform: scale(1); opacity: 1; } }
+
+/* Notification panel */
+.notif-panel-enter { animation: slideDown 0.2s ease-out; }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-8px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+/* Admin panel badge */
+.badge-admin { @apply text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400; }
+
+/* Onboarding step transitions */
+.step-slide { animation: stepSlide 0.3s ease-out; }
+@keyframes stepSlide { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+/* Report modal */
+.report-option:hover { @apply bg-red-50 dark:bg-red-500/10 border-red-300 dark:border-red-500/40; }
+
+/* Better card shadows in light mode */
+.card { box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); }
+.dark .card { box-shadow: none; }
+
+/* Attachment item */
+.attachment-item { @apply flex items-center gap-2.5 p-2.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors; }

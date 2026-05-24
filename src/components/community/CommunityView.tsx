@@ -4,13 +4,16 @@ import {
   ChevronDown, Clock, Search, CheckCircle2,
   ArrowLeft, Users2, Bookmark, BookmarkCheck, UserCheck, UserPlus,
   TrendingUp, Calendar, FileText, Lightbulb, HelpCircle, Flame,
-  EyeOff, CalendarPlus, AtSign,
+  EyeOff, CalendarPlus, AtSign, Flag, ShieldAlert, MoreHorizontal,
+  Paperclip, Image, Download, ExternalLink, AlertTriangle,
 } from 'lucide-react';
-import { useCommunity, useProfile, useSavedPosts, useDirectMessages, useConnections } from '../../hooks/useFirebase';
+import { useCommunity, useProfile, useSavedPosts, useDirectMessages, useConnections, useModeration, sendNotification } from '../../hooks/useFirebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { HelpPost, HelpReply, PHILIPPINE_SCHOOLS, PostType, POST_TYPE_META } from '../../types';
+import { HelpPost, HelpReply, PHILIPPINE_SCHOOLS, PostType, POST_TYPE_META, Attachment } from '../../types';
 import { Modal } from '../ui/Modal';
+import { FileUpload } from '../uploads/FileUpload';
 import { cn, formatRelativeTime, getInitials } from '../../utils/helpers';
+import { getFileIcon, formatFileSize } from '../../lib/cloudinary';
 import toast from 'react-hot-toast';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -29,6 +32,161 @@ function PostTypeBadge({ type }: { type: PostType }) {
   );
 }
 
+// ─── Attachment Display ────────────────────────────────────────────────────────
+
+function AttachmentList({ attachments }: { attachments: Attachment[] }) {
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {attachments.map(att => (
+        <a
+          key={att.uploadId}
+          href={att.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 p-2.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors group"
+          onClick={e => e.stopPropagation()}
+        >
+          <span className="text-lg">{getFileIcon(att.fileType)}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{att.fileName}</p>
+            <p className="text-xs text-gray-400">{formatFileSize(att.fileSize)}</p>
+          </div>
+          <ExternalLink size={12} className="text-gray-400 group-hover:text-indigo-500 transition-colors shrink-0" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// ─── Report Modal ──────────────────────────────────────────────────────────────
+
+function ReportModal({
+  isOpen, onClose, targetId, targetType, targetContent,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  targetId: string;
+  targetType: 'post' | 'reply' | 'user';
+  targetContent?: string;
+}) {
+  const { reportContent } = useModeration();
+  const [reason, setReason] = useState<'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'other'>('inappropriate');
+  const [detail, setDetail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const REASONS = [
+    { value: 'spam', label: '🚫 Spam / Advertising' },
+    { value: 'harassment', label: '😡 Harassment / Bullying' },
+    { value: 'inappropriate', label: '⚠️ Inappropriate Content' },
+    { value: 'misinformation', label: '❌ Misinformation' },
+    { value: 'other', label: '📝 Other' },
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await reportContent({ targetId, targetType, targetContent, reason, reasonDetail: detail });
+      toast.success('Report submitted. Our moderators will review it.');
+      onClose();
+    } catch {
+      toast.error('Failed to submit report');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Report Content" size="sm">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Help keep Acadex safe. Reports are anonymous.
+        </p>
+        <div>
+          <label className="label">Reason *</label>
+          <div className="space-y-2">
+            {REASONS.map(r => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => setReason(r.value as any)}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all text-left',
+                  reason === r.value
+                    ? 'border-red-400 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300'
+                    : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                )}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="label">Additional details (optional)</label>
+          <textarea
+            value={detail}
+            onChange={e => setDetail(e.target.value)}
+            className="input resize-none"
+            rows={2}
+            placeholder="Add more context..."
+          />
+        </div>
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
+          <button type="submit" disabled={submitting} className="btn-danger flex-1 justify-center">
+            <Flag size={14} /> {submitting ? 'Reporting...' : 'Submit Report'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ─── Post Actions Menu ─────────────────────────────────────────────────────────
+
+function PostActionsMenu({ post, onReport, onBlock, onClose }: {
+  post: HelpPost;
+  onReport: () => void;
+  onBlock: () => void;
+  onClose: () => void;
+}) {
+  const { currentUser } = useAuth();
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="absolute right-0 top-8 z-30 w-44 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-white/10 overflow-hidden py-1"
+      onClick={e => e.stopPropagation()}
+    >
+      <button
+        onClick={() => { onReport(); onClose(); }}
+        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+      >
+        <Flag size={14} className="text-amber-500" /> Report Post
+      </button>
+      {currentUser && post.authorId !== currentUser.uid && (
+        <button
+          onClick={() => { onBlock(); onClose(); }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+        >
+          <ShieldAlert size={14} /> Block User
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── New Post Modal ────────────────────────────────────────────────────────────
 
 function NewPostModal({
@@ -39,6 +197,7 @@ function NewPostModal({
   onSubmit: (data: {
     title: string; body: string; schoolTag: string; subjectTag: string;
     postType: PostType; isAnonymous: boolean; studyGroupDate?: string;
+    attachments: Attachment[];
   }) => Promise<void>;
 }) {
   const [title, setTitle] = useState('');
@@ -48,13 +207,15 @@ function NewPostModal({
   const [postType, setPostType] = useState<PostType>('question');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [studyGroupDate, setStudyGroupDate] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showAttachments, setShowAttachments] = useState(false);
 
   const POST_TYPES: { value: PostType; label: string; icon: string; placeholder: string }[] = [
-    { value: 'question',    label: 'Question',    icon: '❓', placeholder: 'e.g. How do I solve this integral? Can someone explain photosynthesis?' },
-    { value: 'study_group', label: 'Study Group', icon: '👥', placeholder: 'e.g. Looking for group to study for our upcoming Math finals!' },
-    { value: 'notes_share', label: 'Notes Share', icon: '📝', placeholder: 'e.g. Sharing my summary notes for Biochemistry Chapter 4' },
-    { value: 'exam_tip',    label: 'Exam Tip',    icon: '💡', placeholder: 'e.g. For Physics exams, always draw a free body diagram first!' },
+    { value: 'question',    label: 'Question',    icon: '❓', placeholder: 'e.g. How do I solve this integral?' },
+    { value: 'study_group', label: 'Study Group', icon: '👥', placeholder: 'e.g. Looking for Math finals study group!' },
+    { value: 'notes_share', label: 'Notes Share', icon: '📝', placeholder: 'e.g. Sharing Biochem Chapter 4 notes' },
+    { value: 'exam_tip',    label: 'Exam Tip',    icon: '💡', placeholder: 'e.g. Always draw a free body diagram first!' },
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,11 +225,11 @@ function NewPostModal({
     try {
       await onSubmit({
         title: title.trim(), body: body.trim(), schoolTag, subjectTag: subjectTag.trim(),
-        postType, isAnonymous,
+        postType, isAnonymous, attachments,
         ...(postType === 'study_group' && studyGroupDate ? { studyGroupDate } : {}),
       });
       toast.success('Post shared with the community!');
-      setTitle(''); setBody(''); setSchoolTag(''); setSubjectTag(''); setStudyGroupDate('');
+      setTitle(''); setBody(''); setSchoolTag(''); setSubjectTag(''); setStudyGroupDate(''); setAttachments([]);
       onClose();
     } catch {
       toast.error('Failed to post. Try again.');
@@ -77,7 +238,6 @@ function NewPostModal({
     }
   };
 
-  const currentMeta = POST_TYPE_META[postType];
   const currentPlaceholder = POST_TYPES.find(t => t.value === postType)?.placeholder || '';
 
   return (
@@ -106,22 +266,18 @@ function NewPostModal({
         </div>
 
         <div>
-          <label className="label">
-            {postType === 'question' ? 'Your Question' : postType === 'study_group' ? 'Group Name / Subject' : postType === 'notes_share' ? 'Notes Title' : 'Tip Title'} *
-          </label>
+          <label className="label">Title *</label>
           <input
             value={title}
             onChange={e => setTitle(e.target.value)}
             className="input"
-            placeholder={currentPlaceholder.split('?')[0] || currentPlaceholder.slice(0, 60)}
+            placeholder={currentPlaceholder.slice(0, 60)}
             required
           />
         </div>
 
         <div>
-          <label className="label">
-            {postType === 'question' ? 'Details / Context' : postType === 'study_group' ? 'What will you study? Meeting details?' : postType === 'notes_share' ? 'What topics do your notes cover?' : 'Explain your tip'} *
-          </label>
+          <label className="label">Details *</label>
           <textarea
             value={body}
             onChange={e => setBody(e.target.value)}
@@ -132,7 +288,6 @@ function NewPostModal({
           />
         </div>
 
-        {/* Study Group Date */}
         {postType === 'study_group' && (
           <div>
             <label className="label">Study Session Date & Time (optional)</label>
@@ -164,6 +319,31 @@ function NewPostModal({
           </div>
         </div>
 
+        {/* File Attachments Toggle */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowAttachments(v => !v)}
+            className={cn(
+              'w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all',
+              showAttachments || attachments.length > 0
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
+                : 'border-dashed border-gray-200 dark:border-white/10 text-gray-500 hover:border-gray-300'
+            )}
+          >
+            <Paperclip size={15} />
+            {attachments.length > 0 ? `${attachments.length} file(s) attached` : 'Attach Files'}
+            {attachments.length > 0 && (
+              <span className="ml-auto text-xs px-1.5 py-0.5 rounded-full bg-indigo-500 text-white">{attachments.length}</span>
+            )}
+          </button>
+          {showAttachments && (
+            <div className="mt-2">
+              <FileUpload attachments={attachments} onAttachmentsChange={setAttachments} maxFiles={5} />
+            </div>
+          )}
+        </div>
+
         {/* Anonymous toggle */}
         <button
           type="button"
@@ -178,7 +358,7 @@ function NewPostModal({
           <EyeOff size={16} />
           <div className="text-left">
             <p>{isAnonymous ? 'Posting anonymously' : 'Post anonymously'}</p>
-            {isAnonymous && <p className="text-xs font-normal text-gray-400">Your name will be hidden. Author ID is stored for moderation.</p>}
+            {isAnonymous && <p className="text-xs font-normal text-gray-400">Your name will be hidden. ID stored for moderation.</p>}
           </div>
           <div className={cn('ml-auto w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all', isAnonymous ? 'border-gray-500 bg-gray-400' : 'border-gray-300')}>
             {isAnonymous && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
@@ -222,6 +402,17 @@ function DMModal({
     setSending(true);
     try {
       await sendMessage(text.trim());
+      // Send in-app notification to recipient
+      if (currentUser) {
+        await sendNotification({
+          type: 'dm',
+          title: `New message from ${currentUser.displayName || 'Someone'}`,
+          body: text.trim().slice(0, 100),
+          fromUserId: currentUser.uid,
+          fromUserName: currentUser.displayName || 'Anonymous',
+          recipientId: targetUserId,
+        });
+      }
       setText('');
     } catch {
       toast.error('Failed to send message');
@@ -233,7 +424,6 @@ function DMModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Chat with ${targetUserName}`} size="md">
       <div className="flex flex-col h-80">
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-2 mb-3 pr-1">
           {loading && <div className="text-center text-sm text-gray-400 py-4">Loading...</div>}
           {!loading && messages.length === 0 && (
@@ -262,8 +452,6 @@ function DMModal({
           })}
           <div ref={bottomRef} />
         </div>
-
-        {/* Input */}
         <form onSubmit={handleSend} className="flex gap-2">
           <input
             value={text}
@@ -344,7 +532,6 @@ function StudyPartnerModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
             <div className="text-center py-8 text-gray-400">
               <Users2 size={32} className="mx-auto mb-2 text-gray-300 dark:text-gray-600" />
               <p className="text-sm font-medium">No matches yet.</p>
-              <p className="text-xs mt-1">Try broadening your filters.</p>
             </div>
           ) : (
             <div className="space-y-2 max-h-72 overflow-y-auto">
@@ -372,19 +559,17 @@ function StudyPartnerModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                       <button
                         onClick={() => toggleConnection(p.authorId, p.authorName)}
                         className={cn(
-                          'p-1.5 rounded-lg transition-all text-xs',
+                          'p-1.5 rounded-lg transition-all',
                           isConnected
                             ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
-                            : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'
+                            : 'bg-gray-100 dark:bg-white/10 text-gray-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'
                         )}
-                        title={isConnected ? 'Remove connection' : 'Add connection'}
                       >
                         {isConnected ? <UserCheck size={14} /> : <UserPlus size={14} />}
                       </button>
                       <button
                         onClick={() => setDmTarget({ userId: p.authorId, userName: p.authorName })}
-                        className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 transition-all"
-                        title="Send message"
+                        className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 transition-all"
                       >
                         <MessageCircle size={14} />
                       </button>
@@ -425,9 +610,11 @@ function PostDetail({
 }) {
   const { currentUser } = useAuth();
   const { savedIds, toggleSave } = useSavedPosts();
+  const { blockUser, reportContent } = useModeration();
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [dmTarget, setDmTarget] = useState<{ userId: string; userName: string } | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
   const hasUpvotedPost = currentUser ? post.upvotedBy?.includes(currentUser.uid) : false;
   const isSaved = savedIds.has(post.postId);
   const hasRsvpd = currentUser ? post.studyGroupRsvps?.includes(currentUser.uid) : false;
@@ -439,6 +626,18 @@ function PostDetail({
     setSending(true);
     try {
       await onAddReply(post.postId, replyText.trim());
+      // Notify post author
+      if (currentUser && post.authorId !== currentUser.uid && !post.isAnonymous) {
+        await sendNotification({
+          type: 'reply',
+          title: `${currentUser.displayName || 'Someone'} replied to your post`,
+          body: replyText.trim().slice(0, 100),
+          postId: post.postId,
+          fromUserId: currentUser.uid,
+          fromUserName: currentUser.displayName || 'Anonymous',
+          recipientId: post.authorId,
+        });
+      }
       setReplyText('');
       toast.success('Reply posted!');
     } catch {
@@ -448,19 +647,53 @@ function PostDetail({
     }
   };
 
+  const handleBlock = async () => {
+    if (!currentUser || post.isAnonymous) return;
+    if (!confirm(`Block ${post.authorName}? Their posts won't appear in your feed.`)) return;
+    await blockUser(post.authorId, post.authorName);
+    toast.success(`${post.authorName} blocked`);
+    onBack();
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
           <ArrowLeft size={16} /> Back to Feed
         </button>
-        <button
-          onClick={() => { toggleSave(post.postId); toast.success(isSaved ? 'Removed from bookmarks' : 'Bookmarked!'); }}
-          className={cn('p-2 rounded-xl transition-all', isSaved ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10' : 'text-gray-400 hover:text-indigo-500 hover:bg-gray-50 dark:hover:bg-white/5')}
-        >
-          {isSaved ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {!post.isAnonymous && currentUser && post.authorId !== currentUser.uid && (
+            <button
+              onClick={handleBlock}
+              className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
+              title="Block user"
+            >
+              <ShieldAlert size={15} />
+            </button>
+          )}
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="p-2 rounded-xl text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all"
+            title="Report post"
+          >
+            <Flag size={15} />
+          </button>
+          <button
+            onClick={() => { toggleSave(post.postId); toast.success(isSaved ? 'Removed from bookmarks' : 'Bookmarked!'); }}
+            className={cn('p-2 rounded-xl transition-all', isSaved ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10' : 'text-gray-400 hover:text-indigo-500 hover:bg-gray-50 dark:hover:bg-white/5')}
+          >
+            {isSaved ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+          </button>
+        </div>
       </div>
+
+      {/* Flagged warning */}
+      {(post as any).flagged && (
+        <div className="mb-4 flex items-center gap-2 p-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30">
+          <AlertTriangle size={14} className="text-orange-500 shrink-0" />
+          <p className="text-xs text-orange-700 dark:text-orange-400 font-medium">This post has been flagged by moderators for review.</p>
+        </div>
+      )}
 
       <div className="card p-5 mb-4">
         <div className="flex items-start justify-between gap-3">
@@ -483,6 +716,9 @@ function PostDetail({
 
         <h2 className="text-lg font-bold text-gray-900 dark:text-white mt-3">{post.title}</h2>
         <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed whitespace-pre-wrap">{post.body}</p>
+
+        {/* File Attachments */}
+        <AttachmentList attachments={post.attachments || []} />
 
         {/* Study Group: date + RSVP */}
         {post.postType === 'study_group' && post.studyGroupDate && (
@@ -526,7 +762,6 @@ function PostDetail({
           <span className="flex items-center gap-1 text-xs text-blue-500 ml-auto">
             <School size={11} /> {post.schoolTag.length > 25 ? post.schoolTag.slice(0, 23) + '...' : post.schoolTag}
           </span>
-          {/* DM author button (only if not anonymous, not self) */}
           {!post.isAnonymous && currentUser && post.authorId !== currentUser.uid && (
             <button
               onClick={() => setDmTarget({ userId: post.authorId, userName: post.authorName })}
@@ -563,7 +798,21 @@ function PostDetail({
                 <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{reply.body}</p>
                 <div className="flex items-center gap-3 mt-3">
                   <button
-                    onClick={() => onUpvoteReply(reply)}
+                    onClick={() => {
+                      onUpvoteReply(reply);
+                      // Notify reply author
+                      if (currentUser && reply.authorId !== currentUser.uid) {
+                        sendNotification({
+                          type: 'upvote_reply',
+                          title: `${currentUser.displayName || 'Someone'} upvoted your reply`,
+                          body: reply.body.slice(0, 80),
+                          postId: post.postId,
+                          fromUserId: currentUser.uid,
+                          fromUserName: currentUser.displayName || 'Anonymous',
+                          recipientId: reply.authorId,
+                        });
+                      }
+                    }}
                     className={cn('flex items-center gap-1 text-xs transition-colors', hasUpvoted ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-gray-400 hover:text-indigo-500')}
                   >
                     <ThumbsUp size={12} /> {reply.upvotes || 0} helpful
@@ -597,74 +846,119 @@ function PostDetail({
       {dmTarget && (
         <DMModal isOpen={Boolean(dmTarget)} onClose={() => setDmTarget(null)} targetUserId={dmTarget.userId} targetUserName={dmTarget.userName} />
       )}
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        targetId={post.postId}
+        targetType="post"
+        targetContent={post.title + ': ' + post.body}
+      />
     </div>
   );
 }
 
 // ─── Post Card ─────────────────────────────────────────────────────────────────
 
-function PostCard({ post, onClick, onUpvote, onToggleSave, isSaved }: {
+function PostCard({ post, onClick, onUpvote, onToggleSave, isSaved, onReport, onBlock }: {
   post: HelpPost;
   onClick: () => void;
   onUpvote: (e: React.MouseEvent) => void;
   onToggleSave: (e: React.MouseEvent) => void;
   isSaved: boolean;
+  onReport: () => void;
+  onBlock: () => void;
 }) {
   const { currentUser } = useAuth();
   const hasUpvoted = currentUser ? post.upvotedBy?.includes(currentUser.uid) : false;
   const authorDisplayName = post.isAnonymous ? 'Anonymous Student' : post.authorName;
-  const meta = POST_TYPE_META[post.postType || 'question'];
+  const [showMenu, setShowMenu] = useState(false);
+
+  // RSVP notification state for study groups
+  const hasRsvpd = currentUser ? post.studyGroupRsvps?.includes(currentUser.uid) : false;
 
   return (
-    <button onClick={onClick} className="card p-4 text-left w-full hover:shadow-md transition-all duration-200 group">
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 shrink-0">
-          <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold', post.isAnonymous ? 'bg-gray-400' : 'bg-indigo-600')}>
-            {post.isAnonymous ? <EyeOff size={12} /> : getInitials(post.authorName)}
+    <div className="relative">
+      <button onClick={onClick} className="card p-4 text-left w-full hover:shadow-md transition-all duration-200 group">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold', post.isAnonymous ? 'bg-gray-400' : 'bg-indigo-600')}>
+              {post.isAnonymous ? <EyeOff size={12} /> : getInitials(post.authorName)}
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{authorDisplayName}</p>
+              <p className="text-xs text-gray-400">{formatRelativeTime(post.createdAt)}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{authorDisplayName}</p>
-            <p className="text-xs text-gray-400">{formatRelativeTime(post.createdAt)}</p>
+          <div className="flex items-center gap-1">
+            <PostTypeBadge type={post.postType || 'question'} />
+            {(post as any).flagged && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 font-semibold">
+                ⚠️
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <PostTypeBadge type={post.postType || 'question'} />
-        </div>
-      </div>
 
-      {/* Study group date pill */}
-      {post.postType === 'study_group' && post.studyGroupDate && (
-        <div className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 mb-1.5">
-          <Calendar size={10} />
-          {new Date(post.studyGroupDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          {(post.studyGroupRsvps || []).length > 0 && (
-            <span className="ml-1 text-violet-400">· {(post.studyGroupRsvps || []).length} going</span>
-          )}
-        </div>
-      )}
+        {post.postType === 'study_group' && post.studyGroupDate && (
+          <div className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 mb-1.5">
+            <Calendar size={10} />
+            {new Date(post.studyGroupDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            {(post.studyGroupRsvps || []).length > 0 && (
+              <span className="ml-1 text-violet-400">· {(post.studyGroupRsvps || []).length} going</span>
+            )}
+          </div>
+        )}
 
-      <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 text-sm">
-        {post.title}
-      </h3>
-      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{post.body}</p>
+        <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 text-sm">
+          {post.title}
+        </h3>
+        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{post.body}</p>
 
-      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100 dark:border-white/5">
-        <span className="flex items-center gap-1 text-xs text-blue-500 font-medium">
-          <School size={10} /> {post.schoolTag.length > 22 ? post.schoolTag.slice(0, 20) + '...' : post.schoolTag}
-        </span>
-        <div className="flex items-center gap-2">
-          <button onClick={onUpvote} className={cn('flex items-center gap-1 text-xs transition-colors', hasUpvoted ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-gray-400 hover:text-indigo-500')}>
-            <ThumbsUp size={11} /> {post.upvotes || 0}
-          </button>
-          <span className="flex items-center gap-1 text-xs text-gray-400">
-            <MessageCircle size={11} /> {post.replyCount || 0}
+        {/* Attachment indicator */}
+        {(post.attachments || []).length > 0 && (
+          <div className="flex items-center gap-1 mt-2 text-xs text-indigo-500">
+            <Paperclip size={10} /> {post.attachments!.length} attachment{post.attachments!.length !== 1 ? 's' : ''}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100 dark:border-white/5">
+          <span className="flex items-center gap-1 text-xs text-blue-500 font-medium">
+            <School size={10} /> {post.schoolTag.length > 22 ? post.schoolTag.slice(0, 20) + '...' : post.schoolTag}
           </span>
-          <button onClick={onToggleSave} className={cn('p-0.5 rounded transition-colors', isSaved ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-300 hover:text-indigo-400')}>
-            {isSaved ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onUpvote} className={cn('flex items-center gap-1 text-xs transition-colors', hasUpvoted ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-gray-400 hover:text-indigo-500')}>
+              <ThumbsUp size={11} /> {post.upvotes || 0}
+            </button>
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+              <MessageCircle size={11} /> {post.replyCount || 0}
+            </span>
+            <button onClick={onToggleSave} className={cn('p-0.5 rounded transition-colors', isSaved ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-300 hover:text-indigo-400')}>
+              {isSaved ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
+            </button>
+          </div>
         </div>
+      </button>
+
+      {/* More actions button */}
+      <div className="absolute top-2 right-2">
+        <button
+          onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }}
+          className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 transition-all"
+          style={{ opacity: showMenu ? 1 : undefined }}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+        {showMenu && (
+          <PostActionsMenu
+            post={post}
+            onReport={onReport}
+            onBlock={onBlock}
+            onClose={() => setShowMenu(false)}
+          />
+        )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -676,6 +970,7 @@ export function CommunityView() {
   const { currentUser } = useAuth();
   const { posts, replies, loading, addPost, addReply, upvotePost, upvoteReply, markReplyResolved, rsvpStudyGroup } = useCommunity();
   const { savedIds, toggleSave } = useSavedPosts();
+  const { blockedUsers, blockUser, reportContent } = useModeration();
   const [showNewPost, setShowNewPost] = useState(false);
   const [showPartners, setShowPartners] = useState(false);
   const [selectedPost, setSelectedPost] = useState<HelpPost | null>(null);
@@ -683,9 +978,13 @@ export function CommunityView() {
   const [schoolFilter, setSchoolFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState<PostType | 'all'>('all');
   const [feedTab, setFeedTab] = useState<FeedTab>('latest');
+  const [reportTarget, setReportTarget] = useState<{ id: string; type: 'post' | 'reply' | 'user'; content?: string } | null>(null);
+
+  const blockedIds = new Set(blockedUsers.map(b => b.blockedUserId));
 
   const filtered = useMemo(() => {
     let list = posts.filter(p => {
+      if (blockedIds.has(p.authorId)) return false; // hide blocked users
       const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.body.toLowerCase().includes(search.toLowerCase());
       const matchSchool = schoolFilter === 'all' || p.schoolTag === schoolFilter;
       const matchType = typeFilter === 'all' || p.postType === typeFilter;
@@ -695,12 +994,11 @@ export function CommunityView() {
 
     if (feedTab === 'trending') {
       list = [...list].sort((a, b) => trendingScore(b) - trendingScore(a));
-    } else if (feedTab === 'latest' || feedTab === 'saved') {
+    } else {
       list = [...list].sort((a, b) => b.createdAt - a.createdAt);
     }
-
     return list;
-  }, [posts, search, schoolFilter, typeFilter, feedTab, savedIds]);
+  }, [posts, search, schoolFilter, typeFilter, feedTab, savedIds, blockedIds]);
 
   const postReplies = selectedPost ? replies.filter(r => r.postId === selectedPost.postId) : [];
 
@@ -715,7 +1013,20 @@ export function CommunityView() {
 
   const handleUpvotePost = async (post: HelpPost) => {
     if (!currentUser) { toast.error('Sign in to upvote'); return; }
+    const alreadyUpvoted = post.upvotedBy?.includes(currentUser.uid);
     await upvotePost(post.postId, currentUser.uid);
+    // Notify post author only on new upvote
+    if (!alreadyUpvoted && post.authorId !== currentUser.uid && !post.isAnonymous) {
+      await sendNotification({
+        type: 'upvote',
+        title: `${currentUser.displayName || 'Someone'} upvoted your post`,
+        body: post.title,
+        postId: post.postId,
+        fromUserId: currentUser.uid,
+        fromUserName: currentUser.displayName || 'Anonymous',
+        recipientId: post.authorId,
+      });
+    }
   };
 
   const handleAddReply = async (postId: string, body: string) => {
@@ -743,17 +1054,26 @@ export function CommunityView() {
     await rsvpStudyGroup(postId, currentUser.uid);
     const post = posts.find(p => p.postId === postId);
     const alreadyIn = post?.studyGroupRsvps?.includes(currentUser.uid);
-    toast.success(alreadyIn ? 'RSVP removed' : 'You\'re going! 🎉');
-    if (selectedPost?.postId === postId) {
-      setSelectedPost(prev => {
-        if (!prev) return prev;
-        const alreadyInLocal = prev.studyGroupRsvps?.includes(currentUser.uid);
-        const studyGroupRsvps = alreadyInLocal
-          ? (prev.studyGroupRsvps || []).filter(id => id !== currentUser.uid)
-          : [...(prev.studyGroupRsvps || []), currentUser.uid];
-        return { ...prev, studyGroupRsvps };
+    if (!alreadyIn && post && post.authorId !== currentUser.uid) {
+      await sendNotification({
+        type: 'rsvp',
+        title: `${currentUser.displayName || 'Someone'} RSVPed to your study group`,
+        body: post.title,
+        postId,
+        fromUserId: currentUser.uid,
+        fromUserName: currentUser.displayName || 'Anonymous',
+        recipientId: post.authorId,
       });
     }
+    toast.success(alreadyIn ? 'RSVP removed' : 'You\'re going! 🎉');
+    setSelectedPost(prev => {
+      if (!prev || prev.postId !== postId) return prev;
+      const alreadyInLocal = prev.studyGroupRsvps?.includes(currentUser.uid);
+      const studyGroupRsvps = alreadyInLocal
+        ? (prev.studyGroupRsvps || []).filter(id => id !== currentUser.uid)
+        : [...(prev.studyGroupRsvps || []), currentUser.uid];
+      return { ...prev, studyGroupRsvps };
+    });
   };
 
   if (selectedPost) {
@@ -774,11 +1094,11 @@ export function CommunityView() {
   }
 
   const POST_TYPE_FILTERS: { value: PostType | 'all'; label: string; icon: string }[] = [
-    { value: 'all',         label: 'All',         icon: '📋' },
-    { value: 'question',    label: 'Questions',   icon: '❓' },
-    { value: 'study_group', label: 'Groups',      icon: '👥' },
-    { value: 'notes_share', label: 'Notes',       icon: '📝' },
-    { value: 'exam_tip',    label: 'Tips',        icon: '💡' },
+    { value: 'all',         label: 'All',       icon: '📋' },
+    { value: 'question',    label: 'Questions',  icon: '❓' },
+    { value: 'study_group', label: 'Groups',     icon: '👥' },
+    { value: 'notes_share', label: 'Notes',      icon: '📝' },
+    { value: 'exam_tip',    label: 'Tips',       icon: '💡' },
   ];
 
   return (
@@ -859,7 +1179,9 @@ export function CommunityView() {
         <span className="flex items-center gap-1"><MessageCircle size={12} /> {posts.length} posts</span>
         <span className="flex items-center gap-1"><ThumbsUp size={12} /> {posts.reduce((s, p) => s + (p.upvotes || 0), 0)} upvotes</span>
         <span className="flex items-center gap-1"><School size={12} /> {new Set(posts.map(p => p.schoolTag)).size} schools</span>
-        <span className="flex items-center gap-1"><Users2 size={12} /> {new Set(posts.filter(p => p.postType === 'study_group').map(p => p.authorId)).size} study groups</span>
+        {blockedUsers.length > 0 && (
+          <span className="flex items-center gap-1 text-red-400"><ShieldAlert size={12} /> {blockedUsers.length} blocked</span>
+        )}
       </div>
 
       {/* Posts */}
@@ -892,6 +1214,14 @@ export function CommunityView() {
               onUpvote={(e) => { e.stopPropagation(); handleUpvotePost(post); }}
               onToggleSave={(e) => { e.stopPropagation(); toggleSave(post.postId); }}
               isSaved={savedIds.has(post.postId)}
+              onReport={() => setReportTarget({ id: post.postId, type: 'post', content: post.title + ': ' + post.body })}
+              onBlock={async () => {
+                if (!post.isAnonymous && currentUser && post.authorId !== currentUser.uid) {
+                  if (!confirm(`Block ${post.authorName}?`)) return;
+                  await blockUser(post.authorId, post.authorName);
+                  toast.success(`${post.authorName} blocked`);
+                }
+              }}
             />
           ))}
         </div>
@@ -899,6 +1229,16 @@ export function CommunityView() {
 
       <NewPostModal isOpen={showNewPost} onClose={() => setShowNewPost(false)} onSubmit={handleNewPost} />
       <StudyPartnerModal isOpen={showPartners} onClose={() => setShowPartners(false)} />
+
+      {reportTarget && (
+        <ReportModal
+          isOpen={true}
+          onClose={() => setReportTarget(null)}
+          targetId={reportTarget.id}
+          targetType={reportTarget.type}
+          targetContent={reportTarget.content}
+        />
+      )}
     </div>
   );
 }

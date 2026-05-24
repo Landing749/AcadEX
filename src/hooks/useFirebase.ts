@@ -230,7 +230,29 @@ export function usePresets() {
     if (navigator.onLine) await remove(ref(db, `presets/${currentUser.uid}/${presetId}`));
   }, [currentUser]);
 
-  return { presets, loading, addPreset, deletePreset };
+  const importPreset = useCallback(async (template: { name: string; description: string; schoolType: string; subjects: any[] }) => {
+    if (!currentUser) return;
+    for (const s of template.subjects) {
+      const subject = {
+        subjectId: generateId(),
+        userId: currentUser.uid,
+        createdAt: Date.now(),
+        subjectName: s.subjectName,
+        icon: s.icon,
+        color: s.color,
+        weight: s.weight,
+        targetGrade: s.targetGrade,
+        gradeWeights: s.gradeWeights,
+        semester: '',
+        teacherName: '',
+      };
+      if (navigator.onLine) {
+        await set(ref(db, `subjects/${currentUser.uid}/${subject.subjectId}`), subject);
+      }
+    }
+  }, [currentUser]);
+
+  return { presets, loading, addPreset, deletePreset, importPreset };
 }
 
 // ---- COMMUNITY ----
@@ -588,4 +610,209 @@ export function usePublicProfile(shareId: string | null) {
   }, [shareId]);
 
   return { profile, loading, notFound };
+}
+
+// ---- IN-APP NOTIFICATIONS ----
+
+export function useAppNotifications() {
+  const { currentUser } = useAuth();
+  const [notifications, setNotifications] = useState<import('../types').AppNotification[]>([]);
+
+  useEffect(() => {
+    if (!currentUser || !navigator.onLine) return;
+    const notifRef = ref(db, `notifications/${currentUser.uid}`);
+    const unsub = onValue(notifRef, (snap) => {
+      const data = snap.val();
+      const list = data ? (Object.values(data) as import('../types').AppNotification[]) : [];
+      setNotifications(list.sort((a, b) => b.createdAt - a.createdAt));
+    });
+    return () => unsub();
+  }, [currentUser]);
+
+  const markRead = useCallback(async (id: string) => {
+    if (!currentUser) return;
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    if (navigator.onLine) {
+      onValue(ref(db, `notifications/${currentUser.uid}/${id}`), (snap) => {
+        const n = snap.val();
+        if (n) set(ref(db, `notifications/${currentUser.uid}/${id}`), { ...n, read: true });
+      }, { onlyOnce: true });
+    }
+  }, [currentUser]);
+
+  const markAllRead = useCallback(async () => {
+    if (!currentUser) return;
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    if (navigator.onLine) {
+      notifications.filter(n => !n.read).forEach(n => {
+        set(ref(db, `notifications/${currentUser.uid}/${n.id}`), { ...n, read: true });
+      });
+    }
+  }, [currentUser, notifications]);
+
+  const clearAll = useCallback(async () => {
+    if (!currentUser) return;
+    setNotifications([]);
+    if (navigator.onLine) {
+      remove(ref(db, `notifications/${currentUser.uid}`));
+    }
+  }, [currentUser]);
+
+  return { notifications, markRead, markAllRead, clearAll, unreadCount: notifications.filter(n => !n.read).length };
+}
+
+export async function sendNotification(notification: Omit<import('../types').AppNotification, 'id' | 'createdAt' | 'read'>) {
+  if (!navigator.onLine) return;
+  const id = generateId();
+  const n: import('../types').AppNotification = { ...notification, id, createdAt: Date.now(), read: false };
+  await set(ref(db, `notifications/${notification.recipientId}/${id}`), n);
+}
+
+// ---- MODERATION (REPORTS & BLOCKS) ----
+
+export function useModeration() {
+  const { currentUser } = useAuth();
+  const [blockedUsers, setBlockedUsers] = useState<import('../types').BlockedUser[]>([]);
+
+  useEffect(() => {
+    if (!currentUser || !navigator.onLine) return;
+    const blockRef = ref(db, `blocks/${currentUser.uid}`);
+    const unsub = onValue(blockRef, (snap) => {
+      const data = snap.val();
+      const list = data ? (Object.values(data) as import('../types').BlockedUser[]) : [];
+      setBlockedUsers(list);
+    });
+    return () => unsub();
+  }, [currentUser]);
+
+  const reportContent = useCallback(async (data: {
+    targetId: string;
+    targetType: 'post' | 'reply' | 'user';
+    targetContent?: string;
+    reason: import('../types').ReportReason;
+    reasonDetail?: string;
+  }) => {
+    if (!currentUser) return;
+    const report: import('../types').Report = {
+      reportId: generateId(),
+      ...data,
+      reportedBy: currentUser.uid,
+      reportedByName: currentUser.displayName || 'Anonymous',
+      createdAt: Date.now(),
+      status: 'pending',
+    };
+    if (navigator.onLine) {
+      await set(ref(db, `reports/${report.reportId}`), report);
+    }
+    return report;
+  }, [currentUser]);
+
+  const blockUser = useCallback(async (targetUserId: string, targetUserName: string) => {
+    if (!currentUser) return;
+    const block: import('../types').BlockedUser = {
+      blockedUserId: targetUserId,
+      blockedUserName: targetUserName,
+      createdAt: Date.now(),
+    };
+    setBlockedUsers(prev => [...prev.filter(b => b.blockedUserId !== targetUserId), block]);
+    if (navigator.onLine) {
+      await set(ref(db, `blocks/${currentUser.uid}/${targetUserId}`), block);
+    }
+  }, [currentUser]);
+
+  const unblockUser = useCallback(async (targetUserId: string) => {
+    if (!currentUser) return;
+    setBlockedUsers(prev => prev.filter(b => b.blockedUserId !== targetUserId));
+    if (navigator.onLine) {
+      await remove(ref(db, `blocks/${currentUser.uid}/${targetUserId}`));
+    }
+  }, [currentUser]);
+
+  return { blockedUsers, reportContent, blockUser, unblockUser };
+}
+
+// ---- ADMIN ----
+
+export function useAdminReports() {
+  const [reports, setReports] = useState<import('../types').Report[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!navigator.onLine) { setLoading(false); return; }
+    const reportsRef = ref(db, 'reports');
+    const unsub = onValue(reportsRef, (snap) => {
+      const data = snap.val();
+      const list = data ? (Object.values(data) as import('../types').Report[]) : [];
+      setReports(list.sort((a, b) => b.createdAt - a.createdAt));
+      setLoading(false);
+    }, () => setLoading(false));
+    return () => unsub();
+  }, []);
+
+  const updateReportStatus = useCallback(async (reportId: string, status: import('../types').ReportStatus, adminNote?: string) => {
+    setReports(prev => prev.map(r => r.reportId === reportId ? { ...r, status, adminNote, reviewedAt: Date.now() } : r));
+    if (navigator.onLine) {
+      onValue(ref(db, `reports/${reportId}`), (snap) => {
+        const r = snap.val();
+        if (r) set(ref(db, `reports/${reportId}`), { ...r, status, adminNote, reviewedAt: Date.now() });
+      }, { onlyOnce: true });
+    }
+  }, []);
+
+  const deletePost = useCallback(async (postId: string) => {
+    if (navigator.onLine) await remove(ref(db, `community/posts/${postId}`));
+  }, []);
+
+  const deleteReply = useCallback(async (replyId: string) => {
+    if (navigator.onLine) await remove(ref(db, `community/replies/${replyId}`));
+  }, []);
+
+  const flagPost = useCallback(async (postId: string, flagged: boolean) => {
+    if (!navigator.onLine) return;
+    onValue(ref(db, `community/posts/${postId}`), (snap) => {
+      const post = snap.val();
+      if (post) set(ref(db, `community/posts/${postId}`), { ...post, flagged });
+    }, { onlyOnce: true });
+  }, []);
+
+  return { reports, loading, updateReportStatus, deletePost, deleteReply, flagPost };
+}
+
+// ---- ONBOARDING ----
+
+export function useOnboarding() {
+  const { currentUser } = useAuth();
+  const { profile, updateProfile } = useProfile();
+
+  const completeOnboarding = useCallback(async (data: import('../types').OnboardingData) => {
+    if (!currentUser) return;
+    await updateProfile({ schoolType: data.schoolType, school: data.schoolName, onboardingCompleted: true } as any);
+    localStorage.setItem(`acadex_onboarding_${currentUser.uid}`, 'done');
+  }, [currentUser, updateProfile]);
+
+  const needsOnboarding = !!(currentUser && !(profile as any)?.onboardingCompleted && !localStorage.getItem(`acadex_onboarding_${currentUser.uid}`));
+
+  return { needsOnboarding, completeOnboarding };
+}
+
+// ---- ADMIN ACCESS (UID whitelist at /admin/<uid> in RTDB) ----
+// To grant access: Firebase Console → Realtime Database → /admin/<uid> → set any truthy value
+
+export function useAdminAccess() {
+  const { currentUser } = useAuth();
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null); // null = still checking
+
+  useEffect(() => {
+    if (!currentUser) { setIsAdmin(false); return; }
+
+    const adminRef = ref(db, `admin/${currentUser.uid}`);
+    const unsub = onValue(
+      adminRef,
+      (snap) => setIsAdmin(snap.exists()),
+      ()     => setIsAdmin(false),
+    );
+    return () => unsub();
+  }, [currentUser]);
+
+  return { isAdmin };
 }

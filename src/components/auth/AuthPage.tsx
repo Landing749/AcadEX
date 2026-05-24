@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { BookOpen, Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, AlertCircle, GraduationCap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { HeroIllustration, SchoolIllustration, BellIllustration } from '../illustrations';
 import toast from 'react-hot-toast';
 
 type AuthMode = 'login' | 'register' | 'forgot';
@@ -58,163 +59,225 @@ export function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-gray-900 to-purple-950 flex items-center justify-center p-4">
-      {/* Animated background blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-80 h-80 bg-indigo-600/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute top-1/2 -right-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute -bottom-20 left-1/3 w-72 h-72 bg-violet-500/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
-      </div>
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* Left panel — hero */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 flex-col items-center justify-center p-12">
+        {/* Background illustration */}
+        <div className="absolute inset-0 opacity-30">
+          <HeroIllustration className="w-full h-full" />
+        </div>
+        {/* Floating decorative shapes */}
+        <div className="absolute top-16 right-16 w-32 h-32 bg-white/10 rounded-3xl rotate-12 blur-sm" />
+        <div className="absolute bottom-24 left-16 w-24 h-24 bg-indigo-400/30 rounded-2xl -rotate-6" />
+        <div className="absolute top-1/3 left-8 w-16 h-16 bg-violet-300/20 rounded-xl rotate-45" />
 
-      <div className="relative w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8 animate-slide-up">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl shadow-glow mb-4">
-            <BookOpen size={32} className="text-white" />
+        <div className="relative z-10 max-w-md text-center">
+          {/* School illustration */}
+          <div className="mb-8 flex items-center justify-center">
+            <div className="w-44 h-44 drop-shadow-2xl">
+              <SchoolIllustration className="w-full h-full" />
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-white" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-            Acade<span className="text-indigo-400">x</span>
+
+          <h1 className="text-4xl font-bold text-white mb-4 leading-tight" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            Your Academic Journey Starts Here
           </h1>
-          <p className="text-gray-400 mt-1 text-sm">Your academic productivity companion</p>
+          <p className="text-indigo-200 text-lg leading-relaxed mb-10">
+            Track grades, manage assignments, and connect with fellow students across the Philippines.
+          </p>
+
+          {/* Feature pills */}
+          <div className="flex flex-wrap justify-center gap-3">
+            {['📊 Grade Tracker', '📅 Assignment Planner', '👥 Study Community', '📈 Analytics'].map(f => (
+              <span key={f} className="px-4 py-2 rounded-full bg-white/15 backdrop-blur-sm text-white text-sm font-medium border border-white/20">
+                {f}
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* Card — always dark since auth page sits on a dark gradient */}
-        <div className="rounded-3xl p-8 shadow-2xl border border-white/10 animate-slide-up" style={{ animationDelay: '0.1s', background: 'rgba(17,24,39,0.85)', backdropFilter: 'blur(16px)' }}>
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-white">
-              {mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create account' : 'Reset password'}
-            </h2>
-            <p className="text-gray-400 text-sm mt-1">
-              {mode === 'login' ? 'Sign in to continue' : mode === 'register' ? 'Start tracking your academics' : 'We\'ll send you a reset link'}
+        {/* Notification preview card */}
+        <div className="absolute bottom-10 right-10 bg-white/15 backdrop-blur-md rounded-2xl p-4 border border-white/20 max-w-52 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10">
+              <BellIllustration className="w-full h-full" />
+            </div>
+            <div>
+              <p className="text-white text-xs font-bold">Assignment Due Soon</p>
+              <p className="text-indigo-200 text-xs">Physics Lab Report • 2h</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right panel — auth form */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900 min-h-screen lg:min-h-0">
+        <div className="relative w-full max-w-md">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <GraduationCap size={24} className="text-white" />
+              </div>
+              <span className="text-3xl font-bold text-gray-900 dark:text-white" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                Acade<span className="text-indigo-500">x</span>
+              </span>
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {mode === 'login' && 'Sign in to continue your journey'}
+              {mode === 'register' && 'Create your free account today'}
+              {mode === 'forgot' && 'Reset your password'}
             </p>
           </div>
 
-          {error && (
-            <div className="mb-4 flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-              <AlertCircle size={16} className="text-red-400 shrink-0" />
-              <p className="text-sm text-red-400">{error}</p>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">Full Name</label>
-                <div className="relative">
-                  <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="Your full name"
-                    required
-                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
-                  />
-                </div>
+          {/* Card */}
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-white/10 p-8">
+            {/* Mode tabs for login/register */}
+            {mode !== 'forgot' && (
+              <div className="flex gap-1 bg-gray-100 dark:bg-white/5 rounded-xl p-1 mb-6">
+                <button
+                  onClick={() => { setMode('login'); setError(''); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    mode === 'login'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                >Sign In</button>
+                <button
+                  onClick={() => { setMode('register'); setError(''); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    mode === 'register'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                >Create Account</button>
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
-              <div className="relative">
-                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@school.edu"
-                  required
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
-                />
+            {error && (
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 mb-5">
+                <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
               </div>
-            </div>
+            )}
 
-            {mode !== 'forgot' && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Full Name</label>
+                  <div className="relative">
+                    <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
+                      placeholder="Juan dela Cruz"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">Password</label>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Email Address</label>
                 <div className="relative">
-                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
+                    placeholder="juan@school.edu.ph"
                     required
-                    className="w-full pl-10 pr-10 py-3 rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
                   />
+                </div>
+              </div>
+
+              {mode !== 'forgot' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Password</label>
+                  <div className="relative">
+                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
+                      placeholder={mode === 'register' ? 'At least 6 characters' : '••••••••'}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Confirm Password</label>
+                  <div className="relative">
+                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
+                      placeholder="Repeat your password"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {mode === 'login' && (
+                <div className="flex justify-end">
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                    onClick={() => { setMode('forgot'); setError(''); }}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-medium transition-colors"
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    Forgot password?
                   </button>
                 </div>
-              </div>
-            )}
-
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">Confirm Password</label>
-                <div className="relative">
-                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
-                  />
-                </div>
-              </div>
-            )}
-
-            {mode === 'login' && (
-              <button
-                type="button"
-                onClick={() => { setMode('forgot'); setError(''); }}
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-              >
-                Forgot password?
-              </button>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-all duration-200 active:scale-95 disabled:opacity-50 text-sm"
-            >
-              {loading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <>
-                  {mode === 'login' ? 'Sign In' : mode === 'register' ? 'Create Account' : 'Send Reset Link'}
-                  <ArrowRight size={16} />
-                </>
               )}
-            </button>
-          </form>
 
-          <div className="mt-5 text-center">
-            {mode === 'login' ? (
-              <p className="text-sm text-gray-400">
-                Don't have an account?{' '}
-                <button onClick={() => { setMode('register'); setError(''); }} className="text-indigo-400 hover:text-indigo-300 font-semibold">
-                  Sign up free
-                </button>
-              </p>
-            ) : (
-              <button onClick={() => { setMode('login'); setError(''); }} className="text-sm text-indigo-400 hover:text-indigo-300 font-semibold">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
+              >
+                {loading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    {mode === 'login' ? 'Sign In' : mode === 'register' ? 'Create Account' : 'Send Reset Link'}
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {mode === 'forgot' && (
+              <button
+                onClick={() => { setMode('login'); setError(''); }}
+                className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 mt-4 transition-colors"
+              >
                 ← Back to sign in
               </button>
             )}
           </div>
-        </div>
 
-        <p className="text-center text-gray-600 text-xs mt-6">
-          Made with 💙 for students everywhere
-        </p>
+          {/* Footer */}
+          <p className="text-center text-xs text-gray-400 mt-6">
+            For Filipino students 🇵🇭 · Built with ❤️ for academic excellence
+          </p>
+        </div>
       </div>
     </div>
   );

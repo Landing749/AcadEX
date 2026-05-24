@@ -12,6 +12,7 @@ import {
 } from '../../utils/helpers';
 import { format, isToday, isTomorrow, addDays } from 'date-fns';
 import { TodayWidget } from './TodayWidget';
+import { DashboardHeroIllustration, SchoolIllustration } from '../illustrations';
 
 interface DashboardProps {
   onNavigate: (page: string) => void;
@@ -77,30 +78,44 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   return (
     <div className="p-4 sm:p-6 space-y-6 animate-fade-in">
       {/* Greeting Header */}
-      <div className="relative overflow-hidden card p-6 bg-gradient-to-br from-indigo-600 to-violet-600 border-0">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-24 translate-x-16" />
-        <div className="absolute bottom-0 left-16 w-32 h-32 bg-white/5 rounded-full translate-y-16" />
-        <div className="relative">
-          <p className="text-indigo-100 text-sm font-medium">{getGreeting()},</p>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">{getName()} 👋</h1>
-          <p className="text-indigo-100 text-sm mt-2">
-            {stats.overdue.length > 0
-              ? `You have ${stats.overdue.length} overdue assignment${stats.overdue.length > 1 ? 's' : ''} — let's get on it!`
-              : stats.upcoming.length > 0
-              ? `${stats.upcoming.length} upcoming assignment${stats.upcoming.length > 1 ? 's' : ''} this week. You've got this!`
-              : "You're all caught up! Great work 🎉"}
-          </p>
-          <div className="flex items-center gap-3 mt-4">
-            <button
-              onClick={() => onNavigate('assignments')}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 font-semibold rounded-xl text-sm hover:bg-indigo-50 transition-colors active:scale-95"
-            >
-              <Plus size={16} />
-              Add Assignment
-            </button>
-            <div className="text-indigo-100 text-sm font-medium">
-              GPA: <span className="text-white font-bold text-lg">{stats.gpa.toFixed(2)}</span>
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-700 shadow-xl shadow-indigo-500/20">
+        <div className="absolute inset-0 opacity-20 flex items-center justify-end pr-4">
+          <DashboardHeroIllustration className="h-full w-auto max-w-none" />
+        </div>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-32 translate-x-20" />
+        <div className="absolute -bottom-8 left-20 w-40 h-40 bg-violet-500/20 rounded-full" />
+        <div className="relative flex items-center justify-between p-6">
+          <div>
+            <p className="text-indigo-200 text-sm font-medium">{getGreeting()},</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mt-0.5" style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+              {getName()} 👋
+            </h1>
+            <p className="text-indigo-200 text-sm mt-2 max-w-xs">
+              {stats.overdue.length > 0
+                ? `You have ${stats.overdue.length} overdue assignment${stats.overdue.length > 1 ? "s" : ""} — let's get on it!`
+                : stats.upcoming.length > 0
+                ? `${stats.upcoming.length} upcoming assignment${stats.upcoming.length > 1 ? "s" : ""} this week. You've got this!`
+                : "You're all caught up! Great work 🎉"}
+            </p>
+            <div className="flex items-center gap-3 mt-4">
+              <button
+                onClick={() => onNavigate("assignments")}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 font-bold rounded-xl text-sm hover:bg-indigo-50 transition-all active:scale-95 shadow-md"
+              >
+                <Plus size={15} /> Add Task
+              </button>
+              <div className="px-4 py-2 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20">
+                <p className="text-indigo-200 text-xs">GPA</p>
+                <p className="text-white font-bold text-lg leading-tight">{stats.gpa.toFixed(2)}</p>
+              </div>
+              <div className="px-4 py-2 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20">
+                <p className="text-indigo-200 text-xs">Done</p>
+                <p className="text-white font-bold text-lg leading-tight">{stats.completionRate}%</p>
+              </div>
             </div>
+          </div>
+          <div className="hidden sm:block w-32 h-32 drop-shadow-xl shrink-0">
+            <DashboardHeroIllustration className="w-full h-full" />
           </div>
         </div>
       </div>

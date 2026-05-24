@@ -155,6 +155,60 @@ export const POST_TYPE_META: Record<PostType, { label: string; icon: string; col
   exam_tip:    { label: 'Exam Tip',    icon: '💡', color: 'text-amber-600 dark:text-amber-400',  bg: 'bg-amber-50',  darkBg: 'dark:bg-amber-500/10' },
 };
 
+
+// ---- IN-APP NOTIFICATIONS ----
+export type AppNotificationType = 'reply' | 'upvote' | 'dm' | 'rsvp' | 'upvote_reply' | 'mention';
+
+export interface AppNotification {
+  id: string;
+  type: AppNotificationType;
+  title: string;
+  body: string;
+  postId?: string;
+  fromUserId: string;
+  fromUserName: string;
+  read: boolean;
+  createdAt: number;
+  recipientId: string;
+}
+
+// ---- MODERATION ----
+export type ReportReason = 'spam' | 'harassment' | 'inappropriate' | 'misinformation' | 'other';
+export type ReportStatus = 'pending' | 'reviewed' | 'dismissed' | 'actioned';
+
+export interface Report {
+  reportId: string;
+  targetId: string;
+  targetType: 'post' | 'reply' | 'user';
+  targetContent?: string;
+  reason: ReportReason;
+  reasonDetail?: string;
+  reportedBy: string;
+  reportedByName: string;
+  createdAt: number;
+  status: ReportStatus;
+  adminNote?: string;
+  reviewedAt?: number;
+  reviewedBy?: string;
+}
+
+export interface BlockedUser {
+  blockedUserId: string;
+  blockedUserName: string;
+  createdAt: number;
+}
+
+// ---- ONBOARDING ----
+export type SchoolType = 'jhs' | 'shs' | 'college';
+
+export interface OnboardingData {
+  schoolType: SchoolType;
+  schoolName: string;
+  presetId?: string;
+  notificationsEnabled: boolean;
+  completedAt: number;
+}
+
 export interface HelpPost {
   postId: string;
   title: string;
@@ -171,6 +225,8 @@ export interface HelpPost {
   isAnonymous?: boolean;
   studyGroupDate?: string;   // ISO date string for study group meetups
   studyGroupRsvps?: string[]; // userIds who RSVPed
+  attachments?: Attachment[];  // file attachments
+  flagged?: boolean;           // admin-flagged toxic content
 }
 
 export interface HelpReply {
