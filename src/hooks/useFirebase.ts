@@ -15,7 +15,22 @@ function stripUndefined<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
-// ---- SUBJECTS ----
+// ─── localStorage helpers for presets (lightweight offline cache) ─────────────
+
+function presetsKey(uid: string) { return `acadex_presets_${uid}`; }
+
+function loadCachedPresets(uid: string): GradePreset[] {
+  try {
+    const raw = localStorage.getItem(presetsKey(uid));
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveCachedPresets(uid: string, presets: GradePreset[]) {
+  try { localStorage.setItem(presetsKey(uid), JSON.stringify(presets)); } catch {}
+}
+
+// ─── SUBJECTS ─────────────────────────────────────────────────────────────────
 
 export function useSubjects() {
   const { currentUser } = useAuth();
@@ -25,12 +40,12 @@ export function useSubjects() {
   useEffect(() => {
     if (!currentUser) { setSubjects([]); setLoading(false); return; }
 
+    // Show cached data immediately while Firebase loads
     getCachedSubjects(currentUser.uid).then(cached => {
       if (cached.length > 0) { setSubjects(cached); setLoading(false); }
     });
 
-    if (!navigator.onLine) { setLoading(false); return; }
-
+    // Always set up the Firebase listener — SDK handles offline/reconnect itself
     const subjectsRef = ref(db, `subjects/${currentUser.uid}`);
     const unsubscribe = onValue(subjectsRef, (snapshot) => {
       const data = snapshot.val();
@@ -92,7 +107,7 @@ export function useSubjects() {
   return { subjects, loading, addSubject, updateSubject, deleteSubject };
 }
 
-// ---- ASSIGNMENTS ----
+// ─── ASSIGNMENTS ──────────────────────────────────────────────────────────────
 
 export function useAssignments() {
   const { currentUser } = useAuth();
@@ -102,12 +117,12 @@ export function useAssignments() {
   useEffect(() => {
     if (!currentUser) { setAssignments([]); setLoading(false); return; }
 
+    // Show cached data immediately while Firebase loads
     getCachedAssignments(currentUser.uid).then(cached => {
       if (cached.length > 0) { setAssignments(cached); setLoading(false); }
     });
 
-    if (!navigator.onLine) { setLoading(false); return; }
-
+    // Always set up the Firebase listener
     const assignmentsRef = ref(db, `assignments/${currentUser.uid}`);
     const unsubscribe = onValue(assignmentsRef, async (snapshot) => {
       const data = snapshot.val();
@@ -121,14 +136,11 @@ export function useAssignments() {
         return a;
       });
 
-      // Merge Firebase data with any locally-cached assignments that didn't sync yet.
-      // This prevents assignments from disappearing on refresh when the Firebase write
-      // was delayed or failed (e.g. brief network drop, security rule timing).
+      // Merge Firebase data with locally-cached assignments not yet synced
       const cached = await getCachedAssignments(currentUser.uid);
       const fbIds = new Set(processed.map(a => a.assignmentId));
       const localPending = cached.filter(a => !fbIds.has(a.assignmentId));
 
-      // Re-queue any unsynced local assignments to Firebase so they eventually land.
       if (localPending.length > 0) {
         localPending.forEach(a => {
           set(ref(db, `assignments/${currentUser.uid}/${a.assignmentId}`), stripUndefined(a)).catch(console.error);
@@ -194,7 +206,7 @@ export function useAssignments() {
   return { assignments, loading, addAssignment, updateAssignment, deleteAssignment };
 }
 
-// ---- PRESETS ----
+// ─── PRESETS ──────────────────────────────────────────────────────────────────
 
 export function usePresets() {
   const { currentUser } = useAuth();
@@ -203,31 +215,55 @@ export function usePresets() {
 
   useEffect(() => {
     if (!currentUser) { setPresets([]); setLoading(false); return; }
-    if (!navigator.onLine) { setLoading(false); return; }
 
+    // Load from localStorage immediately so UI never appears empty on refresh
+    const cached = loadCachedPresets(currentUser.uid);
+    if (cached.length > 0) { setPresets(cached); setLoading(false); }
+
+    // Always set up the Firebase listener — SDK handles offline/reconnect
     const presetsRef = ref(db, `presets/${currentUser.uid}`);
     const unsubscribe = onValue(presetsRef, (snapshot) => {
       const data = snapshot.val();
       const list: GradePreset[] = data ? Object.values(data) as GradePreset[] : [];
-      setPresets(list.sort((a, b) => b.createdAt - a.createdAt));
+      const sorted = list.sort((a, b) => b.createdAt - a.createdAt);
+      setPresets(sorted);
+      saveCachedPresets(currentUser.uid, sorted);
       setLoading(false);
-    }, () => setLoading(false));
+    }, (err) => {
+      console.error('Firebase presets error:', err);
+      setLoading(false);
+    });
 
     return () => unsubscribe();
   }, [currentUser]);
 
   const addPreset = useCallback(async (data: Omit<GradePreset, 'presetId' | 'userId' | 'createdAt'>) => {
     if (!currentUser) return;
-    const preset: GradePreset = { ...data, presetId: generateId(), userId: currentUser.uid, createdAt: Date.now() };
-    setPresets(prev => [preset, ...prev]);
-    if (navigator.onLine) await set(ref(db, `presets/${currentUser.uid}/${preset.presetId}`), preset);
+    const preset: GradePreset = {
+      ...data,
+      presetId: generateId(),
+      userId: currentUser.uid,
+      createdAt: Date.now(),
+    };
+    // Optimistic update + cache immediately
+    setPresets(prev => {
+      const next = [preset, ...prev];
+      saveCachedPresets(currentUser.uid, next);
+      return next;
+    });
+    // Always write to Firebase (SDK queues internally if briefly offline)
+    await set(ref(db, `presets/${currentUser.uid}/${preset.presetId}`), preset);
     return preset;
   }, [currentUser]);
 
   const deletePreset = useCallback(async (presetId: string) => {
     if (!currentUser) return;
-    setPresets(prev => prev.filter(p => p.presetId !== presetId));
-    if (navigator.onLine) await remove(ref(db, `presets/${currentUser.uid}/${presetId}`));
+    setPresets(prev => {
+      const next = prev.filter(p => p.presetId !== presetId);
+      saveCachedPresets(currentUser.uid, next);
+      return next;
+    });
+    await remove(ref(db, `presets/${currentUser.uid}/${presetId}`));
   }, [currentUser]);
 
   const importPreset = useCallback(async (template: { name: string; description: string; schoolType: string; subjects: any[] }) => {
@@ -246,26 +282,22 @@ export function usePresets() {
         semester: '',
         teacherName: '',
       };
-      if (navigator.onLine) {
-        await set(ref(db, `subjects/${currentUser.uid}/${subject.subjectId}`), subject);
-      }
+      await set(ref(db, `subjects/${currentUser.uid}/${subject.subjectId}`), subject);
     }
   }, [currentUser]);
 
   return { presets, loading, addPreset, deletePreset, importPreset };
 }
 
-// ---- COMMUNITY ----
+// ─── COMMUNITY ────────────────────────────────────────────────────────────────
 
 export function useCommunity() {
-  const { currentUser } = useAuth();
   const [posts, setPosts] = useState<HelpPost[]>([]);
   const [replies, setReplies] = useState<HelpReply[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!navigator.onLine) { setLoading(false); return; }
-
+    // Always set up Firebase listeners — never gate on navigator.onLine
     const postsRef = ref(db, 'community/posts');
     const unsubPosts = onValue(postsRef, (snapshot) => {
       const data = snapshot.val();
@@ -295,20 +327,18 @@ export function useCommunity() {
       upvotedBy: [],
     };
     setPosts(prev => [post, ...prev]);
-    if (navigator.onLine) await set(ref(db, `community/posts/${post.postId}`), post);
+    await set(ref(db, `community/posts/${post.postId}`), post);
     return post;
   }, []);
 
   const addReply = useCallback(async (data: Omit<HelpReply, 'replyId' | 'createdAt' | 'upvotes' | 'upvotedBy'>) => {
     const reply: HelpReply = { ...data, replyId: generateId(), createdAt: Date.now(), upvotes: 0, upvotedBy: [] };
     setReplies(prev => [...prev, reply]);
-    if (navigator.onLine) {
-      await set(ref(db, `community/replies/${reply.replyId}`), reply);
-      onValue(ref(db, `community/posts/${data.postId}`), (snap) => {
-        const post = snap.val();
-        if (post) set(ref(db, `community/posts/${data.postId}`), { ...post, replyCount: (post.replyCount || 0) + 1 });
-      }, { onlyOnce: true });
-    }
+    await set(ref(db, `community/replies/${reply.replyId}`), reply);
+    onValue(ref(db, `community/posts/${data.postId}`), (snap) => {
+      const post = snap.val();
+      if (post) set(ref(db, `community/posts/${data.postId}`), { ...post, replyCount: (post.replyCount || 0) + 1 });
+    }, { onlyOnce: true });
     return reply;
   }, []);
 
@@ -319,16 +349,14 @@ export function useCommunity() {
       const upvotedBy = alreadyUpvoted ? p.upvotedBy.filter(id => id !== userId) : [...(p.upvotedBy || []), userId];
       return { ...p, upvotes: upvotedBy.length, upvotedBy };
     }));
-    if (navigator.onLine) {
-      onValue(ref(db, `community/posts/${postId}`), (snap) => {
-        const post = snap.val();
-        if (post) {
-          const alreadyUpvoted = (post.upvotedBy || []).includes(userId);
-          const upvotedBy = alreadyUpvoted ? post.upvotedBy.filter((id: string) => id !== userId) : [...(post.upvotedBy || []), userId];
-          set(ref(db, `community/posts/${postId}`), { ...post, upvotes: upvotedBy.length, upvotedBy });
-        }
-      }, { onlyOnce: true });
-    }
+    onValue(ref(db, `community/posts/${postId}`), (snap) => {
+      const post = snap.val();
+      if (post) {
+        const alreadyUpvoted = (post.upvotedBy || []).includes(userId);
+        const upvotedBy = alreadyUpvoted ? post.upvotedBy.filter((id: string) => id !== userId) : [...(post.upvotedBy || []), userId];
+        set(ref(db, `community/posts/${postId}`), { ...post, upvotes: upvotedBy.length, upvotedBy });
+      }
+    }, { onlyOnce: true });
   }, []);
 
   const upvoteReply = useCallback(async (replyId: string, userId: string) => {
@@ -338,26 +366,22 @@ export function useCommunity() {
       const upvotedBy = alreadyUpvoted ? r.upvotedBy.filter(id => id !== userId) : [...(r.upvotedBy || []), userId];
       return { ...r, upvotes: upvotedBy.length, upvotedBy };
     }));
-    if (navigator.onLine) {
-      onValue(ref(db, `community/replies/${replyId}`), (snap) => {
-        const reply = snap.val();
-        if (reply) {
-          const alreadyUpvoted = (reply.upvotedBy || []).includes(userId);
-          const upvotedBy = alreadyUpvoted ? reply.upvotedBy.filter((id: string) => id !== userId) : [...(reply.upvotedBy || []), userId];
-          set(ref(db, `community/replies/${replyId}`), { ...reply, upvotes: upvotedBy.length, upvotedBy });
-        }
-      }, { onlyOnce: true });
-    }
+    onValue(ref(db, `community/replies/${replyId}`), (snap) => {
+      const reply = snap.val();
+      if (reply) {
+        const alreadyUpvoted = (reply.upvotedBy || []).includes(userId);
+        const upvotedBy = alreadyUpvoted ? reply.upvotedBy.filter((id: string) => id !== userId) : [...(reply.upvotedBy || []), userId];
+        set(ref(db, `community/replies/${replyId}`), { ...reply, upvotes: upvotedBy.length, upvotedBy });
+      }
+    }, { onlyOnce: true });
   }, []);
 
   const markReplyResolved = useCallback(async (replyId: string) => {
     setReplies(prev => prev.map(r => r.replyId === replyId ? { ...r, isResolved: true } : r));
-    if (navigator.onLine) {
-      onValue(ref(db, `community/replies/${replyId}`), (snap) => {
-        const reply = snap.val();
-        if (reply) set(ref(db, `community/replies/${replyId}`), { ...reply, isResolved: true });
-      }, { onlyOnce: true });
-    }
+    onValue(ref(db, `community/replies/${replyId}`), (snap) => {
+      const reply = snap.val();
+      if (reply) set(ref(db, `community/replies/${replyId}`), { ...reply, isResolved: true });
+    }, { onlyOnce: true });
   }, []);
 
   const rsvpStudyGroup = useCallback(async (postId: string, userId: string) => {
@@ -369,31 +393,29 @@ export function useCommunity() {
         : [...(p.studyGroupRsvps || []), userId];
       return { ...p, studyGroupRsvps };
     }));
-    if (navigator.onLine) {
-      onValue(ref(db, `community/posts/${postId}`), (snap) => {
-        const post = snap.val();
-        if (post) {
-          const alreadyRsvpd = (post.studyGroupRsvps || []).includes(userId);
-          const studyGroupRsvps = alreadyRsvpd
-            ? post.studyGroupRsvps.filter((id: string) => id !== userId)
-            : [...(post.studyGroupRsvps || []), userId];
-          set(ref(db, `community/posts/${postId}`), { ...post, studyGroupRsvps });
-        }
-      }, { onlyOnce: true });
-    }
+    onValue(ref(db, `community/posts/${postId}`), (snap) => {
+      const post = snap.val();
+      if (post) {
+        const alreadyRsvpd = (post.studyGroupRsvps || []).includes(userId);
+        const studyGroupRsvps = alreadyRsvpd
+          ? post.studyGroupRsvps.filter((id: string) => id !== userId)
+          : [...(post.studyGroupRsvps || []), userId];
+        set(ref(db, `community/posts/${postId}`), { ...post, studyGroupRsvps });
+      }
+    }, { onlyOnce: true });
   }, []);
 
   return { posts, replies, loading, addPost, addReply, upvotePost, upvoteReply, markReplyResolved, rsvpStudyGroup };
 }
 
-// ---- SAVED POSTS ----
+// ─── SAVED POSTS ──────────────────────────────────────────────────────────────
 
 export function useSavedPosts() {
   const { currentUser } = useAuth();
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!currentUser || !navigator.onLine) return;
+    if (!currentUser) return;
     const savedRef = ref(db, `savedPosts/${currentUser.uid}`);
     const unsub = onValue(savedRef, (snap) => {
       const data = snap.val();
@@ -410,17 +432,15 @@ export function useSavedPosts() {
       if (isSaved) next.delete(postId); else next.add(postId);
       return next;
     });
-    if (navigator.onLine) {
-      const nodeRef = ref(db, `savedPosts/${currentUser.uid}/${postId}`);
-      if (isSaved) await remove(nodeRef);
-      else await set(nodeRef, { savedAt: Date.now() });
-    }
+    const nodeRef = ref(db, `savedPosts/${currentUser.uid}/${postId}`);
+    if (isSaved) await remove(nodeRef);
+    else await set(nodeRef, { savedAt: Date.now() });
   }, [currentUser, savedIds]);
 
   return { savedIds, toggleSave };
 }
 
-// ---- DIRECT MESSAGES ----
+// ─── DIRECT MESSAGES ─────────────────────────────────────────────────────────
 
 export function useDirectMessages(otherUserId: string | null) {
   const { currentUser } = useAuth();
@@ -428,9 +448,8 @@ export function useDirectMessages(otherUserId: string | null) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser || !otherUserId || !navigator.onLine) { setLoading(false); return; }
+    if (!currentUser || !otherUserId) { setLoading(false); return; }
 
-    // Listen to both sides of the conversation
     const myRef = ref(db, `messages/${currentUser.uid}/${otherUserId}`);
     const unsub = onValue(myRef, (snap) => {
       const data = snap.val();
@@ -454,25 +473,22 @@ export function useDirectMessages(otherUserId: string | null) {
       read: false,
     };
     setMessages(prev => [...prev, msg]);
-    if (navigator.onLine) {
-      // Store under both users' paths so each can see the thread
-      await set(ref(db, `messages/${currentUser.uid}/${otherUserId}/${msg.messageId}`), msg);
-      await set(ref(db, `messages/${otherUserId}/${currentUser.uid}/${msg.messageId}`), msg);
-    }
+    await set(ref(db, `messages/${currentUser.uid}/${otherUserId}/${msg.messageId}`), msg);
+    await set(ref(db, `messages/${otherUserId}/${currentUser.uid}/${msg.messageId}`), msg);
     return msg;
   }, [currentUser, otherUserId]);
 
   return { messages, loading, sendMessage };
 }
 
-// ---- CONNECTIONS ----
+// ─── CONNECTIONS ──────────────────────────────────────────────────────────────
 
 export function useConnections() {
   const { currentUser } = useAuth();
   const [connections, setConnections] = useState<Connection[]>([]);
 
   useEffect(() => {
-    if (!currentUser || !navigator.onLine) return;
+    if (!currentUser) return;
     const connRef = ref(db, `connections/${currentUser.uid}`);
     const unsub = onValue(connRef, (snap) => {
       const data = snap.val();
@@ -485,20 +501,16 @@ export function useConnections() {
   const toggleConnection = useCallback(async (targetUserId: string, targetUserName: string) => {
     if (!currentUser) return;
     const isConnected = connections.some(c => c.userId === targetUserId);
-
     if (isConnected) {
       setConnections(prev => prev.filter(c => c.userId !== targetUserId));
-      if (navigator.onLine) await remove(ref(db, `connections/${currentUser.uid}/${targetUserId}`));
+      await remove(ref(db, `connections/${currentUser.uid}/${targetUserId}`));
     } else {
       const myName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
       const conn: Connection = { userId: targetUserId, userName: targetUserName, connectedAt: Date.now() };
       setConnections(prev => [...prev, conn]);
-      if (navigator.onLine) {
-        await set(ref(db, `connections/${currentUser.uid}/${targetUserId}`), conn);
-        // Reciprocal: add current user to target's connections too
-        const reciprocal: Connection = { userId: currentUser.uid, userName: myName, connectedAt: Date.now() };
-        await set(ref(db, `connections/${targetUserId}/${currentUser.uid}`), reciprocal);
-      }
+      await set(ref(db, `connections/${currentUser.uid}/${targetUserId}`), conn);
+      const reciprocal: Connection = { userId: currentUser.uid, userName: myName, connectedAt: Date.now() };
+      await set(ref(db, `connections/${targetUserId}/${currentUser.uid}`), reciprocal);
     }
     return !isConnected;
   }, [currentUser, connections]);
@@ -506,7 +518,7 @@ export function useConnections() {
   return { connections, toggleConnection };
 }
 
-// ---- USER PROFILE ----
+// ─── USER PROFILE ─────────────────────────────────────────────────────────────
 
 const profileCacheKey = (uid: string) => `acadex_profile_${uid}`;
 
@@ -518,16 +530,10 @@ export function useProfile() {
   useEffect(() => {
     if (!currentUser) { setProfile(null); setLoading(false); return; }
 
-    // Load from localStorage cache first so it shows instantly on refresh
     try {
       const cached = localStorage.getItem(profileCacheKey(currentUser.uid));
-      if (cached) {
-        setProfile(JSON.parse(cached));
-        setLoading(false);
-      }
+      if (cached) { setProfile(JSON.parse(cached)); setLoading(false); }
     } catch {}
-
-    if (!navigator.onLine) { setLoading(false); return; }
 
     const profileRef = ref(db, `profiles/${currentUser.uid}`);
     const unsub = onValue(profileRef, (snap) => {
@@ -545,8 +551,6 @@ export function useProfile() {
   const updateProfile = useCallback(async (data: Partial<UserProfile>) => {
     if (!currentUser) return;
     const now = Date.now();
-
-    // Use functional updater to avoid stale closure — always works off latest state
     setProfile(prev => {
       const existing: UserProfile = prev ?? {
         uid: currentUser.uid,
@@ -563,20 +567,13 @@ export function useProfile() {
         updatedAt: now,
       };
       const updated: UserProfile = { ...existing, ...data, updatedAt: now };
-
-      // Persist to localStorage immediately
       try { localStorage.setItem(profileCacheKey(currentUser.uid), JSON.stringify(updated)); } catch {}
-
-      // Persist to Firebase
-      if (navigator.onLine) {
-        set(ref(db, `profiles/${currentUser.uid}`), updated);
-        if (updated.isPublic && updated.shareId) {
-          set(ref(db, `public_profiles/${updated.shareId}`), updated);
-        } else if (!updated.isPublic && updated.shareId) {
-          remove(ref(db, `public_profiles/${updated.shareId}`));
-        }
+      set(ref(db, `profiles/${currentUser.uid}`), updated);
+      if (updated.isPublic && updated.shareId) {
+        set(ref(db, `public_profiles/${updated.shareId}`), updated);
+      } else if (!updated.isPublic && updated.shareId) {
+        remove(ref(db, `public_profiles/${updated.shareId}`));
       }
-
       return updated;
     });
   }, [currentUser]);
@@ -584,7 +581,7 @@ export function useProfile() {
   return { profile, loading, updateProfile };
 }
 
-// ---- PUBLIC PROFILE (for shared links) ----
+// ─── PUBLIC PROFILE ───────────────────────────────────────────────────────────
 
 export function usePublicProfile(shareId: string | null) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -593,33 +590,26 @@ export function usePublicProfile(shareId: string | null) {
 
   useEffect(() => {
     if (!shareId) { setLoading(false); setNotFound(true); return; }
-    if (!navigator.onLine) { setLoading(false); setNotFound(true); return; }
-
     const profileRef = ref(db, `public_profiles/${shareId}`);
     const unsub = onValue(profileRef, (snap) => {
       const data = snap.val();
-      if (data && data.isPublic) {
-        setProfile(data);
-      } else {
-        setNotFound(true);
-      }
+      if (data && data.isPublic) { setProfile(data); } else { setNotFound(true); }
       setLoading(false);
     }, () => { setLoading(false); setNotFound(true); });
-
     return () => unsub();
   }, [shareId]);
 
   return { profile, loading, notFound };
 }
 
-// ---- IN-APP NOTIFICATIONS ----
+// ─── IN-APP NOTIFICATIONS ─────────────────────────────────────────────────────
 
 export function useAppNotifications() {
   const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<import('../types').AppNotification[]>([]);
 
   useEffect(() => {
-    if (!currentUser || !navigator.onLine) return;
+    if (!currentUser) return;
     const notifRef = ref(db, `notifications/${currentUser.uid}`);
     const unsub = onValue(notifRef, (snap) => {
       const data = snap.val();
@@ -632,50 +622,43 @@ export function useAppNotifications() {
   const markRead = useCallback(async (id: string) => {
     if (!currentUser) return;
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    if (navigator.onLine) {
-      onValue(ref(db, `notifications/${currentUser.uid}/${id}`), (snap) => {
-        const n = snap.val();
-        if (n) set(ref(db, `notifications/${currentUser.uid}/${id}`), { ...n, read: true });
-      }, { onlyOnce: true });
-    }
+    onValue(ref(db, `notifications/${currentUser.uid}/${id}`), (snap) => {
+      const n = snap.val();
+      if (n) set(ref(db, `notifications/${currentUser.uid}/${id}`), { ...n, read: true });
+    }, { onlyOnce: true });
   }, [currentUser]);
 
   const markAllRead = useCallback(async () => {
     if (!currentUser) return;
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    if (navigator.onLine) {
-      notifications.filter(n => !n.read).forEach(n => {
-        set(ref(db, `notifications/${currentUser.uid}/${n.id}`), { ...n, read: true });
-      });
-    }
+    notifications.filter(n => !n.read).forEach(n => {
+      set(ref(db, `notifications/${currentUser.uid}/${n.id}`), { ...n, read: true });
+    });
   }, [currentUser, notifications]);
 
   const clearAll = useCallback(async () => {
     if (!currentUser) return;
     setNotifications([]);
-    if (navigator.onLine) {
-      remove(ref(db, `notifications/${currentUser.uid}`));
-    }
+    remove(ref(db, `notifications/${currentUser.uid}`));
   }, [currentUser]);
 
   return { notifications, markRead, markAllRead, clearAll, unreadCount: notifications.filter(n => !n.read).length };
 }
 
 export async function sendNotification(notification: Omit<import('../types').AppNotification, 'id' | 'createdAt' | 'read'>) {
-  if (!navigator.onLine) return;
   const id = generateId();
   const n: import('../types').AppNotification = { ...notification, id, createdAt: Date.now(), read: false };
   await set(ref(db, `notifications/${notification.recipientId}/${id}`), n);
 }
 
-// ---- MODERATION (REPORTS & BLOCKS) ----
+// ─── MODERATION (REPORTS & BLOCKS) ───────────────────────────────────────────
 
 export function useModeration() {
   const { currentUser } = useAuth();
   const [blockedUsers, setBlockedUsers] = useState<import('../types').BlockedUser[]>([]);
 
   useEffect(() => {
-    if (!currentUser || !navigator.onLine) return;
+    if (!currentUser) return;
     const blockRef = ref(db, `blocks/${currentUser.uid}`);
     const unsub = onValue(blockRef, (snap) => {
       const data = snap.val();
@@ -701,9 +684,7 @@ export function useModeration() {
       createdAt: Date.now(),
       status: 'pending',
     };
-    if (navigator.onLine) {
-      await set(ref(db, `reports/${report.reportId}`), report);
-    }
+    await set(ref(db, `reports/${report.reportId}`), report);
     return report;
   }, [currentUser]);
 
@@ -715,30 +696,28 @@ export function useModeration() {
       createdAt: Date.now(),
     };
     setBlockedUsers(prev => [...prev.filter(b => b.blockedUserId !== targetUserId), block]);
-    if (navigator.onLine) {
-      await set(ref(db, `blocks/${currentUser.uid}/${targetUserId}`), block);
-    }
+    await set(ref(db, `blocks/${currentUser.uid}/${targetUserId}`), block);
   }, [currentUser]);
 
   const unblockUser = useCallback(async (targetUserId: string) => {
     if (!currentUser) return;
     setBlockedUsers(prev => prev.filter(b => b.blockedUserId !== targetUserId));
-    if (navigator.onLine) {
-      await remove(ref(db, `blocks/${currentUser.uid}/${targetUserId}`));
-    }
+    await remove(ref(db, `blocks/${currentUser.uid}/${targetUserId}`));
   }, [currentUser]);
 
   return { blockedUsers, reportContent, blockUser, unblockUser };
 }
 
-// ---- ADMIN ----
+// ─── ADMIN ────────────────────────────────────────────────────────────────────
 
 export function useAdminReports() {
   const [reports, setReports] = useState<import('../types').Report[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!navigator.onLine) { setLoading(false); return; }
+    // Always set up the listener — admin auth is enforced by Firebase rules, not by
+    // navigator.onLine. If the user isn't an admin, Firebase returns a permission error
+    // and the listener fires the error callback (setting loading=false with empty list).
     const reportsRef = ref(db, 'reports');
     const unsub = onValue(reportsRef, (snap) => {
       const data = snap.val();
@@ -751,24 +730,21 @@ export function useAdminReports() {
 
   const updateReportStatus = useCallback(async (reportId: string, status: import('../types').ReportStatus, adminNote?: string) => {
     setReports(prev => prev.map(r => r.reportId === reportId ? { ...r, status, adminNote, reviewedAt: Date.now() } : r));
-    if (navigator.onLine) {
-      onValue(ref(db, `reports/${reportId}`), (snap) => {
-        const r = snap.val();
-        if (r) set(ref(db, `reports/${reportId}`), { ...r, status, adminNote, reviewedAt: Date.now() });
-      }, { onlyOnce: true });
-    }
+    onValue(ref(db, `reports/${reportId}`), (snap) => {
+      const r = snap.val();
+      if (r) set(ref(db, `reports/${reportId}`), { ...r, status, adminNote, reviewedAt: Date.now() });
+    }, { onlyOnce: true });
   }, []);
 
   const deletePost = useCallback(async (postId: string) => {
-    if (navigator.onLine) await remove(ref(db, `community/posts/${postId}`));
+    await remove(ref(db, `community/posts/${postId}`));
   }, []);
 
   const deleteReply = useCallback(async (replyId: string) => {
-    if (navigator.onLine) await remove(ref(db, `community/replies/${replyId}`));
+    await remove(ref(db, `community/replies/${replyId}`));
   }, []);
 
   const flagPost = useCallback(async (postId: string, flagged: boolean) => {
-    if (!navigator.onLine) return;
     onValue(ref(db, `community/posts/${postId}`), (snap) => {
       const post = snap.val();
       if (post) set(ref(db, `community/posts/${postId}`), { ...post, flagged });
@@ -778,7 +754,7 @@ export function useAdminReports() {
   return { reports, loading, updateReportStatus, deletePost, deleteReply, flagPost };
 }
 
-// ---- ONBOARDING ----
+// ─── ONBOARDING ───────────────────────────────────────────────────────────────
 
 export function useOnboarding() {
   const { currentUser } = useAuth();
@@ -795,16 +771,14 @@ export function useOnboarding() {
   return { needsOnboarding, completeOnboarding };
 }
 
-// ---- ADMIN ACCESS (UID whitelist at /admin/<uid> in RTDB) ----
-// To grant access: Firebase Console → Realtime Database → /admin/<uid> → set any truthy value
+// ─── ADMIN ACCESS ─────────────────────────────────────────────────────────────
 
 export function useAdminAccess() {
   const { currentUser } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null); // null = still checking
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!currentUser) { setIsAdmin(false); return; }
-
     const adminRef = ref(db, `admin/${currentUser.uid}`);
     const unsub = onValue(
       adminRef,
