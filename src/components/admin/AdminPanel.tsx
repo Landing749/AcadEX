@@ -166,8 +166,13 @@ export function AdminPanel() {
   const { posts } = useCommunity();
   const [statusFilter, setStatusFilter] = useState<ReportStatus | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'post' | 'reply' | 'user'>('all');
+  const [showArchive, setShowArchive] = useState(false);
 
-  const filtered = reports.filter(r => {
+  // Active = needs attention; Archived = resolved (actioned / dismissed)
+  const activeReports = reports.filter(r => r.status === 'pending' || r.status === 'reviewed');
+  const archivedReports = reports.filter(r => r.status === 'actioned' || r.status === 'dismissed');
+
+  const filtered = (showArchive ? archivedReports : activeReports).filter(r => {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false;
     if (typeFilter !== 'all' && r.targetType !== typeFilter) return false;
     return true;
@@ -246,9 +251,38 @@ export function AdminPanel() {
 
       {/* Reports */}
       <div>
+        {/* Active / Archive toggle */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => { setShowArchive(false); setStatusFilter('all'); }}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors',
+              !showArchive
+                ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
+                : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:opacity-80'
+            )}
+          >
+            <AlertTriangle size={12} /> Active ({activeReports.length})
+          </button>
+          <button
+            onClick={() => { setShowArchive(true); setStatusFilter('all'); }}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors',
+              showArchive
+                ? 'bg-gray-200 dark:bg-white/20 text-gray-700 dark:text-gray-300'
+                : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:opacity-80'
+            )}
+          >
+            <EyeOff size={12} /> Archive ({archivedReports.length})
+          </button>
+        </div>
+
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <AlertTriangle size={14} className="text-amber-500" /> Reports ({filtered.length})
+            {showArchive
+              ? <><EyeOff size={14} className="text-gray-400" /> Archived Reports ({filtered.length})</>
+              : <><AlertTriangle size={14} className="text-amber-500" /> Active Reports ({filtered.length})</>
+            }
           </h2>
           <div className="flex gap-2">
             <select
@@ -257,10 +291,10 @@ export function AdminPanel() {
               className="text-xs px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             >
               <option value="all">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="reviewed">Reviewed</option>
-              <option value="actioned">Actioned</option>
-              <option value="dismissed">Dismissed</option>
+              {!showArchive && <option value="pending">Pending</option>}
+              {!showArchive && <option value="reviewed">Reviewed</option>}
+              {showArchive && <option value="actioned">Actioned</option>}
+              {showArchive && <option value="dismissed">Dismissed</option>}
             </select>
             <select
               value={typeFilter}
@@ -278,8 +312,17 @@ export function AdminPanel() {
         {filtered.length === 0 ? (
           <div className="card p-12 text-center">
             <Shield size={32} className="text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">No reports to review</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">The community is looking healthy!</p>
+            {showArchive ? (
+              <>
+                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">Archive is empty</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Resolved reports will appear here</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">No reports to review</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">The community is looking healthy!</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
