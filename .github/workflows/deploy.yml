@@ -43,6 +43,7 @@ jobs:
           cp public/sw.js dist/sw.js
           cp public/firebase-messaging-sw.js dist/firebase-messaging-sw.js
           cp public/manifest.json dist/manifest.json
+          cp public/404.html dist/404.html
           cp -r public/icons dist/icons
 
       - name: Setup Pages
