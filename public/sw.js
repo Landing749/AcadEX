@@ -1,6 +1,6 @@
-const CACHE_NAME = 'acadex-v1';
-const STATIC_CACHE = 'acadex-static-v1';
-const DYNAMIC_CACHE = 'acadex-dynamic-v1';
+const CACHE_NAME = 'acadex-v2';
+const STATIC_CACHE = 'acadex-static-v2';
+const DYNAMIC_CACHE = 'acadex-dynamic-v2';
 
 const STATIC_ASSETS = [
   '/',

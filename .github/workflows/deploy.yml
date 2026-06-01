@@ -41,6 +41,7 @@ jobs:
       - name: Copy SW and manifest to dist
         run: |
           cp public/sw.js dist/sw.js
+          cp public/firebase-messaging-sw.js dist/firebase-messaging-sw.js
           cp public/manifest.json dist/manifest.json
           cp -r public/icons dist/icons
 
