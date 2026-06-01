@@ -251,8 +251,22 @@ export function usePresets() {
       saveCachedPresets(currentUser.uid, next);
       return next;
     });
-    // Always write to Firebase (SDK queues internally if briefly offline)
-    await set(ref(db, `presets/${currentUser.uid}/${preset.presetId}`), preset);
+    // Sanitize subjects: remove undefined fields Firebase would reject
+    const sanitized = {
+      ...preset,
+      subjects: preset.subjects.map((s: any) => {
+        const entry: any = {
+          subjectName: s.subjectName,
+          icon: s.icon,
+          color: s.color,
+          weight: s.weight,
+          targetGrade: s.targetGrade,
+        };
+        if (s.gradeWeights) entry.gradeWeights = s.gradeWeights;
+        return entry;
+      }),
+    };
+    await set(ref(db, `presets/${currentUser.uid}/${preset.presetId}`), sanitized);
     return preset;
   }, [currentUser]);
 
