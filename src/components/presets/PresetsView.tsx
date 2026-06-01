@@ -64,6 +64,16 @@ function SavePresetModal({
   const [schoolType, setSchoolType] = useState('college');
   const [loading, setLoading] = useState(false);
 
+  // Reset form state every time the modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setName('');
+      setDescription('');
+      setSchoolType('college');
+      setLoading(false);
+    }
+  }, [isOpen]);
+
   const handleSave = async () => {
     if (!name.trim()) return;
     setLoading(true);
@@ -278,8 +288,9 @@ export function PresetsView() {
 
   const handleSavePreset = async (data: any) => {
     const id = generateId();
-    const shareCode = encodePreset({ ...data, presetId: id, userId: '', createdAt: Date.now(), shareCode: '' });
-    await addPreset({ ...data, shareCode });
+    const presetDraft: GradePreset = { ...data, presetId: id, userId: '', createdAt: Date.now(), shareCode: '' };
+    const shareCode = encodePreset(presetDraft);
+    await addPreset({ ...data, presetId: id, shareCode });
   };
 
   const handleShare = async (preset: GradePreset) => {

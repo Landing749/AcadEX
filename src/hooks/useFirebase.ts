@@ -237,11 +237,11 @@ export function usePresets() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  const addPreset = useCallback(async (data: Omit<GradePreset, 'presetId' | 'userId' | 'createdAt'>) => {
+  const addPreset = useCallback(async (data: Omit<GradePreset, 'userId' | 'createdAt'> & { presetId?: string }) => {
     if (!currentUser) return;
     const preset: GradePreset = {
       ...data,
-      presetId: generateId(),
+      presetId: data.presetId || generateId(),
       userId: currentUser.uid,
       createdAt: Date.now(),
     };
