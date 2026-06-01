@@ -44,9 +44,19 @@ export async function registerFCMToken(userId: string): Promise<string | null> {
       return null;
     }
 
+    // Register the SW if not already registered, then wait until it's active.
+    // getRegistration() returns undefined if it hasn't installed yet, which
+    // causes PushManager to throw "no active Service Worker".
+    let swReg = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
+    if (!swReg) {
+      swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+    }
+    // Wait for the SW to finish activating (handles installing → activated transition)
+    await navigator.serviceWorker.ready;
+
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js'),
+      serviceWorkerRegistration: swReg,
     });
 
     if (!token) {
