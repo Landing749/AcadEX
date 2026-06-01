@@ -6,40 +6,46 @@ import { cn } from '../../utils/helpers';
 export function SyncIndicator() {
   const { syncStatus, isOnline, pendingCount } = useSync();
 
-  const config = {
+  const configs = {
     synced: {
-      icon: <CheckCircle size={14} />,
+      icon: <CheckCircle size={12}/>,
       label: 'Synced',
-      className: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
+      dot: 'bg-emerald-500',
+      cls: 'text-emerald-600 dark:text-emerald-400',
     },
     syncing: {
-      icon: <RefreshCw size={14} className="animate-spin" />,
-      label: 'Syncing...',
-      className: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
+      icon: <RefreshCw size={12} className="animate-spin"/>,
+      label: 'Syncing',
+      dot: 'bg-blue-500 animate-pulse',
+      cls: 'text-blue-600 dark:text-blue-400',
     },
     offline: {
-      icon: <CloudOff size={14} />,
+      icon: <CloudOff size={12}/>,
       label: 'Offline',
-      className: 'bg-gray-100 dark:bg-gray-500/20 text-gray-700 dark:text-gray-400',
+      dot: 'bg-gray-400',
+      cls: 'text-gray-500 dark:text-gray-400',
     },
     pending: {
-      icon: <RefreshCw size={14} className="animate-pulse" />,
-      label: `${pendingCount} pending`,
-      className: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400',
+      icon: <Cloud size={12}/>,
+      label: `${pendingCount} queued`,
+      dot: 'bg-amber-500 animate-pulse',
+      cls: 'text-amber-600 dark:text-amber-400',
     },
     failed: {
-      icon: <AlertCircle size={14} />,
-      label: 'Sync failed',
-      className: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400',
+      icon: <AlertCircle size={12}/>,
+      label: 'Failed',
+      dot: 'bg-red-500',
+      cls: 'text-red-600 dark:text-red-400',
     },
   };
 
-  const { icon, label, className } = config[syncStatus];
+  const c = configs[syncStatus];
 
   return (
-    <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold', className)}>
-      {icon}
-      <span>{label}</span>
+    <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-semibold', c.cls)}>
+      <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', c.dot)}/>
+      {c.icon}
+      <span className="hidden sm:inline">{c.label}</span>
     </div>
   );
 }
